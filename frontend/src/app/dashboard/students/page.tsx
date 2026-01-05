@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye, Users } from "lucide-react";
+import { Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye, Users, Camera, Upload, X, ImagePlus } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
-import { studentsApi, generalApi, Student, Department, Class } from "@/lib/api";
+import { studentsApi, generalApi, faceRecognitionApi, Student, Department, Class } from "@/lib/api";
 import { debounce, formatDate } from "@/lib/utils";
 
 export default function StudentsPage() {
@@ -55,6 +55,12 @@ export default function StudentsPage() {
     specialization: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Image upload state
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [generateFaceEncoding, setGenerateFaceEncoding] = useState(true);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch students
   const fetchStudents = useCallback(async () => {
@@ -109,6 +115,7 @@ export default function StudentsPage() {
     setIsSubmitting(true);
 
     try {
+      // Step 1: Create the student
       const response = await studentsApi.create({
         roll_number: formData.roll_number,
         name: formData.name,
@@ -121,7 +128,27 @@ export default function StudentsPage() {
         specialization: formData.specialization || undefined,
       });
 
-      if (response.success) {
+      if (response.success && response.data) {
+        const studentId = response.data.id;
+        
+        // Step 2: Upload image if selected
+        if (selectedImage) {
+          const formDataImg = new FormData();
+          formDataImg.append("image", selectedImage);
+          
+          try {
+            await studentsApi.uploadImage(studentId, formDataImg);
+            
+            // Step 3: Generate face encoding if enabled
+            if (generateFaceEncoding && imagePreview) {
+              await generateAndStoreFaceEncoding(studentId, imagePreview);
+            }
+          } catch (imgError) {
+            console.error("Image upload error:", imgError);
+            toast.error("Student created but image upload failed");
+          }
+        }
+        
         toast.success("Student added successfully");
         setIsAddModalOpen(false);
         resetForm();
@@ -131,6 +158,46 @@ export default function StudentsPage() {
       toast.error(error instanceof Error ? error.message : "Failed to add student");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  // Generate face encoding from image
+  const generateAndStoreFaceEncoding = async (studentId: string, imageData: string) => {
+    try {
+      const faceapi = await import("face-api.js");
+      
+      // Check if models are loaded, if not load them
+      if (!faceapi.nets.tinyFaceDetector.isLoaded) {
+        const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+        await Promise.all([
+          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
+        ]);
+      }
+      
+      // Create image element
+      const img = document.createElement("img");
+      img.src = imageData;
+      await new Promise((resolve) => (img.onload = resolve));
+      
+      // Detect face and get descriptor
+      const detection = await faceapi
+        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+        .withFaceLandmarks()
+        .withFaceDescriptor();
+      
+      if (detection) {
+        // Store the face encoding
+        const encoding = Array.from(detection.descriptor);
+        await faceRecognitionApi.storeEncoding(studentId, encoding);
+        toast.success("Face registered for recognition");
+      } else {
+        toast.info("No face detected in image - face recognition not enabled");
+      }
+    } catch (error) {
+      console.error("Face encoding error:", error);
+      // Don't show error toast, just log it - image was still uploaded
     }
   };
 
@@ -153,6 +220,24 @@ export default function StudentsPage() {
       });
 
       if (response.success) {
+        // Upload new image if selected
+        if (selectedImage) {
+          const formDataImg = new FormData();
+          formDataImg.append("image", selectedImage);
+          
+          try {
+            await studentsApi.uploadImage(selectedStudent.id, formDataImg);
+            
+            // Generate face encoding if enabled
+            if (generateFaceEncoding && imagePreview) {
+              await generateAndStoreFaceEncoding(selectedStudent.id, imagePreview);
+            }
+          } catch (imgError) {
+            console.error("Image upload error:", imgError);
+            toast.error("Student updated but image upload failed");
+          }
+        }
+        
         toast.success("Student updated successfully");
         setIsEditModalOpen(false);
         resetForm();
@@ -197,6 +282,42 @@ export default function StudentsPage() {
       specialization: "",
     });
     setSelectedStudent(null);
+    setSelectedImage(null);
+    setImagePreview(null);
+    setGenerateFaceEncoding(true);
+  };
+
+  // Handle image selection
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
+      return;
+    }
+    
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("Image must be less than 5MB");
+      return;
+    }
+    
+    setSelectedImage(file);
+    
+    // Create preview
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setImagePreview(e.target?.result as string);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const clearImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
   };
 
   const openEditModal = (student: Student) => {
@@ -212,24 +333,87 @@ export default function StudentsPage() {
       department_id: student.department_id,
       specialization: student.specialization || "",
     });
+    // Set existing image as preview if available
+    if (student.profile_image_url) {
+      setImagePreview(student.profile_image_url);
+    }
     setIsEditModalOpen(true);
   };
 
-  const StudentForm = ({ onSubmit, submitLabel }: { onSubmit: (e: React.FormEvent) => void; submitLabel: string }) => (
+  // Reusable form JSX renderer
+  const renderStudentForm = (onSubmit: (e: React.FormEvent) => void, submitLabel: string) => (
     <form onSubmit={onSubmit} className="space-y-4">
+      {/* Profile Image Upload */}
+      <div className="flex flex-col items-center gap-4 p-4 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+        <div className="relative">
+          {imagePreview ? (
+            <div className="relative">
+              <img
+                src={imagePreview}
+                alt="Preview"
+                className="w-24 h-24 rounded-full object-cover border-4 border-white dark:border-zinc-800 shadow-lg"
+              />
+              <button
+                type="button"
+                onClick={clearImage}
+                className="absolute -top-1 -right-1 p-1 bg-red-500 text-white rounded-full hover:bg-red-600 transition-colors"
+              >
+                <X className="h-3 w-3" />
+              </button>
+            </div>
+          ) : (
+            <div className="w-24 h-24 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
+              <ImagePlus className="h-8 w-8 text-zinc-400" />
+            </div>
+          )}
+        </div>
+        <div className="text-center">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => fileInputRef.current?.click()}
+          >
+            <Upload className="h-4 w-4" />
+            {imagePreview ? "Change Photo" : "Upload Photo"}
+          </Button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImageSelect}
+            className="hidden"
+          />
+          <p className="text-xs text-zinc-500 mt-2">
+            JPG, PNG up to 5MB
+          </p>
+        </div>
+        {imagePreview && (
+          <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={generateFaceEncoding}
+              onChange={(e) => setGenerateFaceEncoding(e.target.checked)}
+              className="rounded border-zinc-300 dark:border-zinc-600"
+            />
+            <span>Enable face recognition for this student</span>
+          </label>
+        )}
+      </div>
+
       <div className="grid grid-cols-2 gap-4">
         <Input
           label="Roll Number"
           placeholder="e.g., 2021CSE001"
           value={formData.roll_number}
-          onChange={(e) => setFormData((prev) => ({ ...prev, roll_number: e.target.value }))}
+          onChange={(e) => setFormData({ ...formData, roll_number: e.target.value })}
           required
         />
         <Input
           label="Full Name"
           placeholder="e.g., John Doe"
           value={formData.name}
-          onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
+          onChange={(e) => setFormData({ ...formData, name: e.target.value })}
           required
         />
       </div>
@@ -239,7 +423,7 @@ export default function StudentsPage() {
           label="Email"
           placeholder="student@university.edu"
           value={formData.email}
-          onChange={(e) => setFormData((prev) => ({ ...prev, email: e.target.value }))}
+          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
           required
         />
         <Input
@@ -247,7 +431,7 @@ export default function StudentsPage() {
           label="Phone"
           placeholder="+91 98765 43210"
           value={formData.phone}
-          onChange={(e) => setFormData((prev) => ({ ...prev, phone: e.target.value }))}
+          onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
         />
       </div>
       <Select
@@ -255,7 +439,7 @@ export default function StudentsPage() {
         placeholder="Select department"
         options={departments.map((d) => ({ value: d.id, label: d.name }))}
         value={formData.department_id}
-        onChange={(e) => setFormData((prev) => ({ ...prev, department_id: e.target.value }))}
+        onChange={(e) => setFormData({ ...formData, department_id: e.target.value })}
         required
       />
       <Select
@@ -263,7 +447,7 @@ export default function StudentsPage() {
         placeholder="Select class"
         options={classes.map((c) => ({ value: c.id, label: c.name }))}
         value={formData.class_id}
-        onChange={(e) => setFormData((prev) => ({ ...prev, class_id: e.target.value }))}
+        onChange={(e) => setFormData({ ...formData, class_id: e.target.value })}
         required
       />
       <div className="grid grid-cols-2 gap-4">
@@ -277,7 +461,7 @@ export default function StudentsPage() {
             { value: "4", label: "4th Year" },
           ]}
           value={formData.year}
-          onChange={(e) => setFormData((prev) => ({ ...prev, year: e.target.value }))}
+          onChange={(e) => setFormData({ ...formData, year: e.target.value })}
           required
         />
         <Select
@@ -288,7 +472,7 @@ export default function StudentsPage() {
             label: `Semester ${i + 1}`,
           }))}
           value={formData.semester}
-          onChange={(e) => setFormData((prev) => ({ ...prev, semester: e.target.value }))}
+          onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
           required
         />
       </div>
@@ -296,7 +480,7 @@ export default function StudentsPage() {
         label="Specialization (Optional)"
         placeholder="e.g., Full Stack Development"
         value={formData.specialization}
-        onChange={(e) => setFormData((prev) => ({ ...prev, specialization: e.target.value }))}
+        onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
       />
       <div className="flex justify-end gap-3 pt-4">
         <Button
@@ -550,7 +734,7 @@ export default function StudentsPage() {
         description="Enter the student's information below"
         size="lg"
       >
-        <StudentForm onSubmit={handleAddStudent} submitLabel="Add Student" />
+        {renderStudentForm(handleAddStudent, "Add Student")}
       </Modal>
 
       {/* Edit Student Modal */}
@@ -564,7 +748,7 @@ export default function StudentsPage() {
         description="Update the student's information"
         size="lg"
       >
-        <StudentForm onSubmit={handleEditStudent} submitLabel="Save Changes" />
+        {renderStudentForm(handleEditStudent, "Save Changes")}
       </Modal>
 
       {/* View Student Modal */}
