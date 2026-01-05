@@ -171,6 +171,7 @@ export default function StudentsPage() {
         const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL), // Fallback detector
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
           faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
         ]);
@@ -181,11 +182,28 @@ export default function StudentsPage() {
       img.src = imageData;
       await new Promise((resolve) => (img.onload = resolve));
       
-      // Detect face and get descriptor
-      const detection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+      // Try TinyFaceDetector first with lenient settings
+      const tinyOptions = new faceapi.TinyFaceDetectorOptions({ 
+        inputSize: 320, 
+        scoreThreshold: 0.2 
+      });
+      
+      let detection = await faceapi
+        .detectSingleFace(img, tinyOptions)
         .withFaceLandmarks()
         .withFaceDescriptor();
+      
+      // If TinyFaceDetector fails, try SSD MobileNet (more accurate but slower)
+      if (!detection) {
+        console.log("TinyFaceDetector failed, trying SSD MobileNet...");
+        const ssdOptions = new faceapi.SsdMobilenetv1Options({
+          minConfidence: 0.3
+        });
+        detection = await faceapi
+          .detectSingleFace(img, ssdOptions)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+      }
       
       if (detection) {
         // Store the face encoding
@@ -193,7 +211,7 @@ export default function StudentsPage() {
         await faceRecognitionApi.storeEncoding(studentId, encoding);
         toast.success("Face registered for recognition");
       } else {
-        toast.info("No face detected in image - face recognition not enabled");
+        toast.info("No face detected in image - face recognition not enabled. Ensure the face is clearly visible.");
       }
     } catch (error) {
       console.error("Face encoding error:", error);

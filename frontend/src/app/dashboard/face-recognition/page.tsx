@@ -76,6 +76,7 @@ export default function FaceRecognitionPage() {
 
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+          faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL), // Fallback detector - more accurate
           faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
           faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
         ]);
@@ -201,14 +202,31 @@ export default function FaceRecognitionPage() {
       img.src = imageData;
       await new Promise((resolve) => (img.onload = resolve));
 
-      // Detect face and get descriptor
-      const detection = await faceapi
-        .detectSingleFace(img, new faceapi.TinyFaceDetectorOptions())
+      // Try TinyFaceDetector first with lenient settings
+      const tinyOptions = new faceapi.TinyFaceDetectorOptions({ 
+        inputSize: 320, 
+        scoreThreshold: 0.2 // Even lower threshold
+      });
+      
+      let detection = await faceapi
+        .detectSingleFace(img, tinyOptions)
         .withFaceLandmarks()
         .withFaceDescriptor();
 
+      // If TinyFaceDetector fails, try SSD MobileNet (more accurate but slower)
       if (!detection) {
-        toast.error("No face detected in the image. Please try again.");
+        console.log("TinyFaceDetector failed, trying SSD MobileNet...");
+        const ssdOptions = new faceapi.SsdMobilenetv1Options({
+          minConfidence: 0.3
+        });
+        detection = await faceapi
+          .detectSingleFace(img, ssdOptions)
+          .withFaceLandmarks()
+          .withFaceDescriptor();
+      }
+
+      if (!detection) {
+        toast.error("No face detected in the image. Please ensure the face is clearly visible and try again.");
         setIsLoading(false);
         return;
       }
@@ -226,14 +244,27 @@ export default function FaceRecognitionPage() {
 
       // Compare with all stored encodings
       for (const encoding of encodings) {
-        const storedDescriptor = new Float32Array(encoding.encoding);
+        // Validate encoding data
+        if (!encoding.face_encoding || !Array.isArray(encoding.face_encoding)) {
+          console.warn(`Invalid encoding for student ${encoding.id}`);
+          continue;
+        }
+        
+        const storedDescriptor = new Float32Array(encoding.face_encoding);
+        
+        // Ensure both descriptors have the same length (128)
+        if (storedDescriptor.length !== detection.descriptor.length) {
+          console.warn(`Descriptor length mismatch for student ${encoding.id}: stored=${storedDescriptor.length}, detected=${detection.descriptor.length}`);
+          continue;
+        }
+        
         const distance = faceapi.euclideanDistance(
           detection.descriptor,
           storedDescriptor
         );
 
         if (!bestMatch || distance < bestMatch.distance) {
-          bestMatch = { studentId: encoding.student_id, distance };
+          bestMatch = { studentId: encoding.id, distance };
         }
       }
 

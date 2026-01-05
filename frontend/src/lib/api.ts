@@ -187,7 +187,7 @@ export const faceApi = {
 // Face recognition API (alias for use in face-recognition page)
 export const faceRecognitionApi = {
   getAllEncodings: () =>
-    api<Array<{ student_id: string; encoding: number[] }>>("/face/encodings"),
+    api<Array<{ id: string; name: string; roll_number: string; face_encoding: number[]; profile_image_url: string | null }>>("/face/encodings"),
   
   match: (formData: FormData) =>
     api("/face/match", { method: "POST", body: formData, isFormData: true }),
