@@ -1,4 +1,4 @@
-# MRU Dashboard - University ERP System
+# MRU CST Dashboard
 
 A modern, full-stack University ERP Dashboard built with Next.js, Express, TypeScript, and Supabase. Features include face recognition for student identification, AI-powered course code generation using Google Gemini, and a sleek minimalistic UI.
 
