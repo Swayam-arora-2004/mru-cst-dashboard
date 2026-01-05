@@ -126,8 +126,6 @@ app.listen(PORT, () => {
   console.log('');
   console.log('═══════════════════════════════════════');
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📡 Environment: ${config.nodeEnv}`);
-  console.log(`🌐 Frontend URL: ${config.cors.frontendUrl}`);
   console.log('═══════════════════════════════════════');
   console.log('');
 });
