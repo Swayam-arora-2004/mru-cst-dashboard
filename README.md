@@ -231,5 +231,3 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [face-api.js](https://github.com/justadudewhohacks/face-api.js/)
 - [Tailwind CSS](https://tailwindcss.com/)
 - [Framer Motion](https://www.framer.com/motion/)
-# mru-cst-dashboard
-# mru-dashboard
