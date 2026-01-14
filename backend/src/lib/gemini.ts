@@ -1,5 +1,6 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
 import { config } from '../config';
+import logger from './logger';
 import { CourseCodeParams } from '../types';
 
 let genAI: GoogleGenerativeAI | null = null;

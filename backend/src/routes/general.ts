@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { getSupabaseAdminClient } from '../lib/supabase';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest, ApiResponse } from '../types';
+import logger from '../lib/logger';
 
 const router = Router();
 
@@ -23,7 +24,7 @@ router.get('/departments', async (req: AuthRequest, res: Response): Promise<void
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get departments error:', error);
+    logger.error('Get departments error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch departments',
@@ -63,7 +64,7 @@ router.post('/departments', authenticate, async (req: AuthRequest, res: Response
     };
     res.status(201).json(response);
   } catch (error) {
-    console.error('Create department error:', error);
+    logger.error('Create department error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to create department',
@@ -99,7 +100,7 @@ router.get('/classes', authenticate, async (req: AuthRequest, res: Response): Pr
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get classes error:', error);
+    logger.error('Get classes error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch classes',
@@ -139,7 +140,7 @@ router.post('/classes', authenticate, async (req: AuthRequest, res: Response): P
     };
     res.status(201).json(response);
   } catch (error) {
-    console.error('Create class error:', error);
+    logger.error('Create class error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to create class',
@@ -187,7 +188,7 @@ router.get('/academic-info', authenticate, async (req: AuthRequest, res: Respons
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get academic info error:', error);
+    logger.error('Get academic info error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch academic info',
@@ -238,7 +239,7 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response): Prom
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get stats error:', error);
+    logger.error('Get stats error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch dashboard stats',
@@ -315,7 +316,7 @@ router.get('/system-info', authenticate, async (req: AuthRequest, res: Response)
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get system info error:', error);
+    logger.error('Get system info error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch system information',

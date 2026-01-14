@@ -34,6 +34,7 @@ import {
   ClassInfo,
 } from "@/lib/api";
 import { debounce } from "@/lib/utils";
+import { API_CONFIG } from "@/lib/constants";
 
 type SearchMode = "face" | "manual";
 
@@ -72,7 +73,7 @@ export default function FaceRecognitionPage() {
         const faceapi = await import("face-api.js");
 
         // Load models from CDN
-        const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+        const MODEL_URL = API_CONFIG.FACE_API_MODEL_URL;
 
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),

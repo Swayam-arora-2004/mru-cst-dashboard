@@ -7,7 +7,8 @@
 // ============================================================================
 
 export const API_CONFIG = {
-  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api",
+  BASE_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5001/api",
+  FACE_API_MODEL_URL: process.env.NEXT_PUBLIC_FACE_API_MODEL_URL || "https://justadudewhohacks.github.io/face-api.js/models",
   TIMEOUT: 30000,
   RETRY_ATTEMPTS: 3,
   RETRY_DELAY: 1000,

@@ -16,6 +16,7 @@ import { Spinner } from "@/components/ui/spinner";
 import { EmptyState } from "@/components/ui/empty-state";
 import { studentsApi, generalApi, faceRecognitionApi, Student, Department, Class } from "@/lib/api";
 import { debounce, formatDate } from "@/lib/utils";
+import { API_CONFIG } from "@/lib/constants";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -168,7 +169,7 @@ export default function StudentsPage() {
       
       // Check if models are loaded, if not load them
       if (!faceapi.nets.tinyFaceDetector.isLoaded) {
-        const MODEL_URL = "https://justadudewhohacks.github.io/face-api.js/models";
+        const MODEL_URL = API_CONFIG.FACE_API_MODEL_URL;
         await Promise.all([
           faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
           faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL), // Fallback detector

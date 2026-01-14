@@ -4,7 +4,10 @@ import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
 import { getSupabaseAdminClient } from '../lib/supabase';
 import { authenticate } from '../middleware/auth';
+import { validateId } from '../middleware/security';
 import { AuthRequest, ApiResponse, PaginatedResponse, Student } from '../types';
+import { config } from '../config';
+import logger from '../lib/logger';
 
 const router = Router();
 
@@ -12,12 +15,12 @@ const router = Router();
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB limit
+  limits: { fileSize: config.upload.maxFileSize },
   fileFilter: (req, file, cb) => {
-    if (file.mimetype.startsWith('image/')) {
+    if (config.upload.allowedFileTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'));
+      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF images are allowed.'));
     }
   },
 });
@@ -64,7 +67,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get students error:', error);
+    logger.error('Get students error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch students',
@@ -74,7 +77,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
 });
 
 // Get single student by ID
-router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/:id', authenticate, validateId('id'), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const supabase = getSupabaseAdminClient();
@@ -100,7 +103,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get student error:', error);
+    logger.error('Get student error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch student',
@@ -136,7 +139,7 @@ router.get('/roll/:rollNumber', authenticate, async (req: AuthRequest, res: Resp
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get student by roll error:', error);
+    logger.error('Get student by roll error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch student',
@@ -212,7 +215,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
     };
     res.status(201).json(response);
   } catch (error) {
-    console.error('Create student error:', error);
+    logger.error('Create student error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to create student',
@@ -249,7 +252,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Update student error:', error);
+    logger.error('Update student error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update student',
@@ -318,7 +321,7 @@ router.post(
       };
       res.status(200).json(response);
     } catch (error) {
-      console.error('Upload image error:', error);
+      logger.error('Upload image error:', error);
       const response: ApiResponse = {
         success: false,
         error: 'Failed to upload image',
@@ -347,7 +350,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Delete student error:', error);
+    logger.error('Delete student error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to delete student',

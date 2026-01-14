@@ -36,6 +36,17 @@ export const config = {
     windowMs: parseInt(process.env.AUTH_RATE_LIMIT_WINDOW_MS || '900000', 10), // 15 minutes
     maxRequests: parseInt(process.env.AUTH_RATE_LIMIT_MAX_REQUESTS || (process.env.NODE_ENV === 'development' ? '100' : '10'), 10),
   },
+  
+  security: {
+    bcryptRounds: parseInt(process.env.BCRYPT_ROUNDS || '12', 10),
+    maxLoginAttempts: parseInt(process.env.MAX_LOGIN_ATTEMPTS || '5', 10),
+    lockoutDuration: parseInt(process.env.LOCKOUT_DURATION || '900000', 10), // 15 minutes
+  },
+  
+  upload: {
+    maxFileSize: parseInt(process.env.MAX_FILE_SIZE || '5242880', 10), // 5MB
+    allowedFileTypes: (process.env.ALLOWED_FILE_TYPES || 'image/jpeg,image/png,image/jpg,image/gif').split(','),
+  },
 };
 
 // List of required environment variables

@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import multer from 'multer';
 import { getSupabaseAdminClient } from '../lib/supabase';
 import { authenticate } from '../middleware/auth';
+import { validateId } from '../middleware/security';
 import { AuthRequest, ApiResponse } from '../types';
+import logger from '../lib/logger';
 
 const router = Router();
 
@@ -75,7 +77,7 @@ router.post(
       };
       res.status(200).json(response);
     } catch (error) {
-      console.error('Face match error:', error);
+      logger.error('Face match error:', error);
       const response: ApiResponse = {
         success: false,
         error: 'Failed to process face match',
@@ -103,7 +105,7 @@ router.get('/encodings', authenticate, async (req: AuthRequest, res: Response): 
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get encodings error:', error);
+    logger.error('Get encodings error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch face encodings',
@@ -116,6 +118,7 @@ router.get('/encodings', authenticate, async (req: AuthRequest, res: Response): 
 router.post(
   '/encoding/:studentId',
   authenticate,
+  validateId('studentId'),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { studentId } = req.params;
@@ -148,7 +151,7 @@ router.post(
       };
       res.status(200).json(response);
     } catch (error) {
-      console.error('Store encoding error:', error);
+      logger.error('Store encoding error:', error);
       const response: ApiResponse = {
         success: false,
         error: 'Failed to store face encoding',
@@ -162,6 +165,7 @@ router.post(
 router.delete(
   '/encoding/:studentId',
   authenticate,
+  validateId('studentId'),
   async (req: AuthRequest, res: Response): Promise<void> => {
     try {
       const { studentId } = req.params;
@@ -180,7 +184,7 @@ router.delete(
       };
       res.status(200).json(response);
     } catch (error) {
-      console.error('Delete encoding error:', error);
+      logger.error('Delete encoding error:', error);
       const response: ApiResponse = {
         success: false,
         error: 'Failed to delete face encoding',

@@ -4,6 +4,13 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import { config, validateConfig, isDevelopment } from './config';
 import { errorHandler, notFoundHandler } from './middleware/error';
+import { 
+  sanitizeInput, 
+  securityHeaders, 
+  requestSizeLimiter, 
+  preventParameterPollution 
+} from './middleware/security';
+import logger from './lib/logger';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -23,12 +30,10 @@ const requestLogger = (req: Request, res: Response, next: NextFunction): void =>
   
   res.on('finish', () => {
     const duration = Date.now() - start;
-    const logLevel = res.statusCode >= 400 ? '⚠️' : '✅';
+    const logLevel = res.statusCode >= 400 ? 'warn' : 'info';
     
     if (isDevelopment || res.statusCode >= 400) {
-      console.log(
-        `${logLevel} ${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`
-      );
+      logger[logLevel](`${req.method} ${req.originalUrl} ${res.statusCode} - ${duration}ms`);
     }
   });
   
@@ -40,7 +45,27 @@ app.use(requestLogger);
 // Security middleware
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", 'data:', 'https:'],
+    },
+  },
 }));
+
+// Additional security headers
+app.use(securityHeaders);
+
+// Input sanitization
+app.use(sanitizeInput);
+
+// Prevent parameter pollution
+app.use(preventParameterPollution);
+
+// Request size limiter (10MB max)
+app.use(requestSizeLimiter(10 * 1024 * 1024));
 
 // CORS configuration
 app.use(cors({

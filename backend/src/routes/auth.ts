@@ -7,6 +7,8 @@ import { ApiResponse } from '../types';
 import { validate } from '../middleware/validate';
 import { registerSchema, loginSchema } from '../schemas';
 import { asyncHandler } from '../middleware/asyncHandler';
+import { trackLoginAttempts, recordLoginAttempt } from '../middleware/security';
+import logger from '../lib/logger';
 
 const router = Router();
 
@@ -36,7 +38,7 @@ router.post(
     }
 
     // Hash password
-    const salt = await bcrypt.genSalt(12);
+    const salt = await bcrypt.genSalt(config.security.bcryptRounds);
     const hashedPassword = await bcrypt.hash(password, salt);
 
     // Create user
@@ -82,9 +84,11 @@ router.post(
 // Login
 router.post(
   '/login',
+  trackLoginAttempts(config.security.maxLoginAttempts, config.security.lockoutDuration),
   validate(loginSchema),
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
     const { email, password } = req.body;
+    const identifier = email || req.ip || 'unknown';
 
     const supabase = getSupabaseAdminClient();
 
@@ -107,13 +111,17 @@ router.post(
     // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
+      recordLoginAttempt(identifier, false);
       const response: ApiResponse = {
         success: false,
-        error: 'Invalid credentials',
+        error: 'Invalid email or password',
       };
       res.status(401).json(response);
       return;
     }
+
+    // Successful login - clear attempts
+    recordLoginAttempt(identifier, true);
 
     // Generate JWT
     const signOptions: SignOptions = {

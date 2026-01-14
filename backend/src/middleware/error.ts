@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { ZodError, ZodIssue } from 'zod';
 import { ApiResponse } from '../types';
+import logger from '../lib/logger';
 
 export class AppError extends Error {
   statusCode: number;
@@ -22,7 +23,7 @@ export const errorHandler = (
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   next: NextFunction
 ): void => {
-  console.error('Error:', {
+  logger.error('Error:', {
     name: err.name,
     message: err.message,
     stack: process.env.NODE_ENV === 'development' ? err.stack : undefined,

@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import { getSupabaseAdminClient } from '../lib/supabase';
 import { generateCourseCodeSuggestions, validateCourseCode } from '../lib/gemini';
 import { authenticate } from '../middleware/auth';
+import { validateId } from '../middleware/security';
 import { AuthRequest, ApiResponse, PaginatedResponse, Course, CourseCodeParams } from '../types';
+import logger from '../lib/logger';
 
 const router = Router();
 
@@ -50,7 +52,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get courses error:', error);
+    logger.error('Get courses error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch courses',
@@ -78,7 +80,7 @@ router.get('/codes', authenticate, async (req: AuthRequest, res: Response): Prom
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get course codes error:', error);
+    logger.error('Get course codes error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch course codes',
@@ -119,7 +121,7 @@ router.post('/generate-code', authenticate, async (req: AuthRequest, res: Respon
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Generate code error:', error);
+    logger.error('Generate code error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to generate course codes',
@@ -160,7 +162,7 @@ router.post('/validate-code', authenticate, async (req: AuthRequest, res: Respon
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Validate code error:', error);
+    logger.error('Validate code error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to validate course code',
@@ -170,7 +172,7 @@ router.post('/validate-code', authenticate, async (req: AuthRequest, res: Respon
 });
 
 // Get single course
-router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+router.get('/:id', authenticate, validateId('id'), async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const supabase = getSupabaseAdminClient();
@@ -196,7 +198,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get course error:', error);
+    logger.error('Get course error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch course',
@@ -232,7 +234,7 @@ router.get('/code/:code', authenticate, async (req: AuthRequest, res: Response):
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Get course by code error:', error);
+    logger.error('Get course by code error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to fetch course',
@@ -297,7 +299,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
     };
     res.status(201).json(response);
   } catch (error) {
-    console.error('Create course error:', error);
+    logger.error('Create course error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to create course',
@@ -353,7 +355,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Update course error:', error);
+    logger.error('Update course error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to update course',
@@ -381,7 +383,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
     };
     res.status(200).json(response);
   } catch (error) {
-    console.error('Delete course error:', error);
+    logger.error('Delete course error:', error);
     const response: ApiResponse = {
       success: false,
       error: 'Failed to delete course',
