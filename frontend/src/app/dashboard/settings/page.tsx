@@ -367,33 +367,6 @@ export default function SettingsPage() {
                     </div>
                   </CardContent>
                 </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Sessions</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800">
-                        <div className="flex items-center gap-3">
-                          <div className="h-2 w-2 bg-emerald-500 rounded-full" />
-                          <div>
-                            <p className="font-medium text-zinc-900 dark:text-white">
-                              Current Session
-                            </p>
-                            <p className="text-sm text-zinc-500">
-                              macOS • Chrome • Last active now
-                            </p>
-                          </div>
-                        </div>
-                        <Badge variant="success">Active</Badge>
-                      </div>
-                    </div>
-                    <Button variant="outline" className="w-full mt-4">
-                      Sign out all other sessions
-                    </Button>
-                  </CardContent>
-                </Card>
               </motion.div>
             )}
 
@@ -403,39 +376,6 @@ export default function SettingsPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-6"
               >
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Appearance</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-3 gap-4">
-                      {["light", "dark", "system"].map((theme) => (
-                        <button
-                          key={theme}
-                          onClick={() =>
-                            setPreferences((prev) => ({ ...prev, theme }))
-                          }
-                          className={`p-4 rounded-xl border-2 transition-colors ${
-                            preferences.theme === theme
-                              ? "border-blue-500 bg-blue-50 dark:bg-blue-900/20"
-                              : "border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700"
-                          }`}
-                        >
-                          <div
-                            className={`h-20 rounded-lg mb-3 ${
-                              theme === "light"
-                                ? "bg-white border border-zinc-200"
-                                : theme === "dark"
-                                  ? "bg-zinc-900"
-                                  : "bg-linear-to-r from-white to-zinc-900"
-                            }`}
-                          />
-                          <p className="font-medium capitalize">{theme}</p>
-                        </button>
-                      ))}
-                    </div>
-                  </CardContent>
-                </Card>
 
                 <Card>
                   <CardHeader>
