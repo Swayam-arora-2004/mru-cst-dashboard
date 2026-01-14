@@ -130,9 +130,9 @@ export default function LoginPage() {
                   />
                   Remember me
                 </label>
-                <a href="#" className="text-zinc-900 dark:text-white hover:underline">
+                {/* <a href="#" className="text-zinc-900 dark:text-white hover:underline">
                   Forgot password?
-                </a>
+                </a> */}
               </div>
 
               <Button type="submit" className="w-full" size="lg" isLoading={isLoading}>
