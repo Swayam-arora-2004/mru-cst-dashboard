@@ -141,7 +141,7 @@ export default function RegisterPage() {
                 type="email"
                 name="email"
                 label="Email"
-                placeholder="you@university.edu"
+                placeholder="email@manavrachna.edu.in"
                 leftIcon={<Mail className="h-4 w-4" />}
                 value={formData.email}
                 onChange={handleChange}

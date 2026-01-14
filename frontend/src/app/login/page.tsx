@@ -106,7 +106,7 @@ export default function LoginPage() {
               <Input
                 type="email"
                 label="Email"
-                placeholder="you@university.edu"
+                placeholder="email@manavrachna.edu.in"
                 leftIcon={<Mail className="h-4 w-4" />}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
