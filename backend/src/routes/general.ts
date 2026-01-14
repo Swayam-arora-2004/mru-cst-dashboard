@@ -247,4 +247,81 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response): Prom
   }
 });
 
+// System info
+router.get('/system-info', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const supabase = getSupabaseAdminClient();
+
+    // Get stats for quick stats section
+    const [studentsResult, coursesResult, departmentsResult, classesResult] = await Promise.all([
+      supabase.from('students').select('id', { count: 'exact', head: true }),
+      supabase.from('courses').select('id', { count: 'exact', head: true }),
+      supabase.from('departments').select('id', { count: 'exact', head: true }),
+      supabase.from('classes').select('id', { count: 'exact', head: true }),
+    ]);
+
+    // Check service connections
+    let supabaseConnected = false;
+    let geminiConnected = false;
+
+    try {
+      // Test Supabase connection
+      const { error: supabaseError } = await supabase
+        .from('departments')
+        .select('id')
+        .limit(1);
+      supabaseConnected = !supabaseError;
+    } catch {
+      supabaseConnected = false;
+    }
+
+    // Check if Gemini API key is configured
+    geminiConnected = !!process.env.GEMINI_API_KEY;
+
+    const response: ApiResponse = {
+      success: true,
+      data: {
+        application: {
+          version: process.env.APP_VERSION || '1.0.0',
+          environment: process.env.NODE_ENV || 'development',
+          frontend: {
+            framework: 'Next.js',
+            version: '16.1.1',
+          },
+          database: {
+            type: 'Supabase',
+            engine: 'PostgreSQL',
+          },
+        },
+        services: {
+          supabase: {
+            name: 'Supabase',
+            description: 'Database & Authentication',
+            connected: supabaseConnected,
+          },
+          gemini: {
+            name: 'Google Gemini',
+            description: 'AI Course Code Generation',
+            connected: geminiConnected,
+          },
+        },
+        stats: {
+          students: studentsResult.count || 0,
+          courses: coursesResult.count || 0,
+          departments: departmentsResult.count || 0,
+          classes: classesResult.count || 0,
+        },
+      },
+    };
+    res.status(200).json(response);
+  } catch (error) {
+    console.error('Get system info error:', error);
+    const response: ApiResponse = {
+      success: false,
+      error: 'Failed to fetch system information',
+    };
+    res.status(500).json(response);
+  }
+});
+
 export default router;

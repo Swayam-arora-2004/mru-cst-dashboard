@@ -23,7 +23,9 @@ import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/authStore";
+import { generalApi, type SystemInfo } from "@/lib/api";
 
 type SettingsTab = "profile" | "security" | "preferences" | "system";
 
@@ -31,6 +33,8 @@ export default function SettingsPage() {
   const { user, setUser } = useAuthStore();
   const [activeTab, setActiveTab] = useState<SettingsTab>("profile");
   const [isLoading, setIsLoading] = useState(false);
+  const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
+  const [isLoadingSystemInfo, setIsLoadingSystemInfo] = useState(false);
 
   // Profile state
   const [profileData, setProfileData] = useState({
@@ -73,6 +77,28 @@ export default function SettingsPage() {
       });
     }
   }, [user]);
+
+  // Fetch system info when system tab is active
+  useEffect(() => {
+    if (activeTab === "system" && !systemInfo) {
+      fetchSystemInfo();
+    }
+  }, [activeTab]);
+
+  const fetchSystemInfo = async () => {
+    setIsLoadingSystemInfo(true);
+    try {
+      const response = await generalApi.getSystemInfo();
+      if (response.success && response.data) {
+        setSystemInfo(response.data);
+      }
+    } catch (error) {
+      console.error("Failed to fetch system info:", error);
+      toast.error("Failed to load system information");
+    } finally {
+      setIsLoadingSystemInfo(false);
+    }
+  };
 
   const handleProfileSave = async () => {
     setIsLoading(true);
@@ -503,40 +529,55 @@ export default function SettingsPage() {
                     <CardTitle>Application Info</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-xs text-zinc-500 uppercase tracking-wide">
-                          Version
-                        </p>
-                        <p className="font-medium text-zinc-900 dark:text-white mt-1">
-                          1.0.0
-                        </p>
+                    {isLoadingSystemInfo ? (
+                      <div className="grid grid-cols-2 gap-4">
+                        {[1, 2, 3, 4].map((i) => (
+                          <div key={i} className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                            <Skeleton className="h-4 w-20 mb-2" />
+                            <Skeleton className="h-6 w-32" />
+                          </div>
+                        ))}
                       </div>
-                      <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-xs text-zinc-500 uppercase tracking-wide">
-                          Environment
-                        </p>
-                        <p className="font-medium text-zinc-900 dark:text-white mt-1">
-                          Production
-                        </p>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-4">
+                        <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                            Version
+                          </p>
+                          <p className="font-medium text-zinc-900 dark:text-white mt-1">
+                            {systemInfo?.application.version || "1.0.0"}
+                          </p>
+                        </div>
+                        <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                            Environment
+                          </p>
+                          <p className="font-medium text-zinc-900 dark:text-white mt-1">
+                            {systemInfo?.application.environment
+                              ? systemInfo.application.environment.charAt(0).toUpperCase() +
+                                systemInfo.application.environment.slice(1)
+                              : "Production"}
+                          </p>
+                        </div>
+                        <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                            Frontend
+                          </p>
+                          <p className="font-medium text-zinc-900 dark:text-white mt-1">
+                            {systemInfo?.application.frontend.framework}{" "}
+                            {systemInfo?.application.frontend.version || "16"}
+                          </p>
+                        </div>
+                        <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                            Database
+                          </p>
+                          <p className="font-medium text-zinc-900 dark:text-white mt-1">
+                            {systemInfo?.application.database.type} ({systemInfo?.application.database.engine})
+                          </p>
+                        </div>
                       </div>
-                      <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-xs text-zinc-500 uppercase tracking-wide">
-                          Frontend
-                        </p>
-                        <p className="font-medium text-zinc-900 dark:text-white mt-1">
-                          Next.js 16
-                        </p>
-                      </div>
-                      <div className="p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-xs text-zinc-500 uppercase tracking-wide">
-                          Database
-                        </p>
-                        <p className="font-medium text-zinc-900 dark:text-white mt-1">
-                          Supabase (PostgreSQL)
-                        </p>
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -548,45 +589,100 @@ export default function SettingsPage() {
                     </CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-3">
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/20">
-                          <Database className="h-5 w-5 text-emerald-600" />
+                    {isLoadingSystemInfo ? (
+                      <>
+                        {[1, 2].map((i) => (
+                          <div key={i} className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="h-10 w-10 rounded-lg" />
+                              <div>
+                                <Skeleton className="h-5 w-32 mb-1" />
+                                <Skeleton className="h-4 w-48" />
+                              </div>
+                            </div>
+                            <Skeleton className="h-6 w-24" />
+                          </div>
+                        ))}
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${
+                              systemInfo?.services.supabase.connected
+                                ? "bg-emerald-100 dark:bg-emerald-900/20"
+                                : "bg-red-100 dark:bg-red-900/20"
+                            }`}>
+                              <Database className={`h-5 w-5 ${
+                                systemInfo?.services.supabase.connected
+                                  ? "text-emerald-600"
+                                  : "text-red-600"
+                              }`} />
+                            </div>
+                            <div>
+                              <p className="font-medium text-zinc-900 dark:text-white">
+                                {systemInfo?.services.supabase.name || "Supabase"}
+                              </p>
+                              <p className="text-sm text-zinc-500">
+                                {systemInfo?.services.supabase.description || "Database & Authentication"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Check className={`h-4 w-4 ${
+                              systemInfo?.services.supabase.connected
+                                ? "text-emerald-500"
+                                : "text-red-500"
+                            }`} />
+                            <span className={`text-sm ${
+                              systemInfo?.services.supabase.connected
+                                ? "text-emerald-600"
+                                : "text-red-600"
+                            }`}>
+                              {systemInfo?.services.supabase.connected ? "Connected" : "Disconnected"}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-zinc-900 dark:text-white">
-                            Supabase
-                          </p>
-                          <p className="text-sm text-zinc-500">
-                            Database & Authentication
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Check className="h-4 w-4 text-emerald-500" />
-                        <span className="text-sm text-emerald-600">Connected</span>
-                      </div>
-                    </div>
 
-                    <div className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
-                      <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-blue-100 dark:bg-blue-900/20">
-                          <GraduationCap className="h-5 w-5 text-blue-600" />
+                        <div className="flex items-center justify-between p-4 rounded-lg border border-zinc-200 dark:border-zinc-800">
+                          <div className="flex items-center gap-3">
+                            <div className={`p-2 rounded-lg ${
+                              systemInfo?.services.gemini.connected
+                                ? "bg-blue-100 dark:bg-blue-900/20"
+                                : "bg-red-100 dark:bg-red-900/20"
+                            }`}>
+                              <GraduationCap className={`h-5 w-5 ${
+                                systemInfo?.services.gemini.connected
+                                  ? "text-blue-600"
+                                  : "text-red-600"
+                              }`} />
+                            </div>
+                            <div>
+                              <p className="font-medium text-zinc-900 dark:text-white">
+                                {systemInfo?.services.gemini.name || "Google Gemini"}
+                              </p>
+                              <p className="text-sm text-zinc-500">
+                                {systemInfo?.services.gemini.description || "AI Course Code Generation"}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Check className={`h-4 w-4 ${
+                              systemInfo?.services.gemini.connected
+                                ? "text-emerald-500"
+                                : "text-red-500"
+                            }`} />
+                            <span className={`text-sm ${
+                              systemInfo?.services.gemini.connected
+                                ? "text-emerald-600"
+                                : "text-red-600"
+                            }`}>
+                              {systemInfo?.services.gemini.connected ? "Connected" : "Disconnected"}
+                            </span>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium text-zinc-900 dark:text-white">
-                            Google Gemini
-                          </p>
-                          <p className="text-sm text-zinc-500">
-                            AI Course Code Generation
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Check className="h-4 w-4 text-emerald-500" />
-                        <span className="text-sm text-emerald-600">Connected</span>
-                      </div>
-                    </div>
+                      </>
+                    )}
                   </CardContent>
                 </Card>
 
@@ -595,32 +691,43 @@ export default function SettingsPage() {
                     <CardTitle>Quick Stats</CardTitle>
                   </CardHeader>
                   <CardContent>
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                      <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                          245
-                        </p>
-                        <p className="text-sm text-zinc-500">Total Students</p>
+                    {isLoadingSystemInfo ? (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[1, 2, 3, 4].map((i) => (
+                          <div key={i} className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                            <Skeleton className="h-8 w-16 mx-auto mb-2" />
+                            <Skeleton className="h-4 w-24 mx-auto" />
+                          </div>
+                        ))}
                       </div>
-                      <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                          48
-                        </p>
-                        <p className="text-sm text-zinc-500">Courses</p>
+                    ) : (
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
+                            {systemInfo?.stats.students || 0}
+                          </p>
+                          <p className="text-sm text-zinc-500">Total Students</p>
+                        </div>
+                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
+                            {systemInfo?.stats.courses || 0}
+                          </p>
+                          <p className="text-sm text-zinc-500">Courses</p>
+                        </div>
+                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
+                            {systemInfo?.stats.departments || 0}
+                          </p>
+                          <p className="text-sm text-zinc-500">Departments</p>
+                        </div>
+                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
+                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
+                            {systemInfo?.stats.classes || 0}
+                          </p>
+                          <p className="text-sm text-zinc-500">Classes</p>
+                        </div>
                       </div>
-                      <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                          6
-                        </p>
-                        <p className="text-sm text-zinc-500">Departments</p>
-                      </div>
-                      <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                          12
-                        </p>
-                        <p className="text-sm text-zinc-500">Classes</p>
-                      </div>
-                    </div>
+                    )}
                   </CardContent>
                 </Card>
               </motion.div>

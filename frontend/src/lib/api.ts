@@ -221,6 +221,8 @@ export const generalApi = {
     api<AcademicInfo>("/academic-info"),
   
   getStats: () => api<DashboardStats>("/stats"),
+  
+  getSystemInfo: () => api<SystemInfo>("/system-info"),
 };
 
 // Types
@@ -400,6 +402,39 @@ export interface DashboardStats {
     name: string;
     created_at: string;
   }>;
+}
+
+export interface SystemInfo {
+  application: {
+    version: string;
+    environment: string;
+    frontend: {
+      framework: string;
+      version: string;
+    };
+    database: {
+      type: string;
+      engine: string;
+    };
+  };
+  services: {
+    supabase: {
+      name: string;
+      description: string;
+      connected: boolean;
+    };
+    gemini: {
+      name: string;
+      description: string;
+      connected: boolean;
+    };
+  };
+  stats: {
+    students: number;
+    courses: number;
+    departments: number;
+    classes: number;
+  };
 }
 
 export interface FaceEncoding {
