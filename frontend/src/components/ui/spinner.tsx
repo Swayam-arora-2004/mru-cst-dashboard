@@ -16,7 +16,7 @@ const sizeClasses = {
 export function Spinner({ size = "md", className }: SpinnerProps) {
   return (
     <svg
-      className={cn("animate-spin text-zinc-400", sizeClasses[size], className)}
+      className={cn("animate-spin text-muted-foreground", sizeClasses[size], className)}
       xmlns="http://www.w3.org/2000/svg"
       fill="none"
       viewBox="0 0 24 24"
@@ -44,10 +44,10 @@ interface LoadingOverlayProps {
 
 export function LoadingOverlay({ message = "Loading..." }: LoadingOverlayProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/80 dark:bg-zinc-950/80 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm">
       <div className="flex flex-col items-center gap-4">
         <Spinner size="lg" />
-        <p className="text-sm text-zinc-500 dark:text-zinc-400">{message}</p>
+        <p className="text-sm text-muted-foreground">{message}</p>
       </div>
     </div>
   );

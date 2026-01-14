@@ -369,7 +369,7 @@ export default function FaceRecognitionPage() {
           {/* Left Column - Search Methods */}
           <div className="space-y-6">
             {/* Mode Toggle */}
-            <div className="flex p-1 bg-zinc-100 dark:bg-zinc-800 rounded-xl">
+            <div className="flex p-1 bg-muted rounded-xl">
               <button
                 onClick={() => {
                   setSearchMode("face");
@@ -377,8 +377,8 @@ export default function FaceRecognitionPage() {
                 }}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   searchMode === "face"
-                    ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm"
-                    : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                    ? "bg-card text-card-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <ScanFace className="h-4 w-4" />
@@ -391,8 +391,8 @@ export default function FaceRecognitionPage() {
                 }}
                 className={`flex-1 flex items-center justify-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
                   searchMode === "manual"
-                    ? "bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white shadow-sm"
-                    : "text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                    ? "bg-card text-card-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground"
                 }`}
               >
                 <Search className="h-4 w-4" />
@@ -415,7 +415,7 @@ export default function FaceRecognitionPage() {
                       <CardContent className="p-4">
                         <div className="flex items-center gap-3">
                           <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
-                          <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                          <span className="text-sm text-muted-foreground">
                             Loading face recognition models...
                           </span>
                         </div>
@@ -447,7 +447,7 @@ export default function FaceRecognitionPage() {
                                 autoPlay
                                 playsInline
                                 muted
-                                className="w-full rounded-xl bg-zinc-900"
+                                className="w-full rounded-xl bg-black"
                               />
                               <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-xl pointer-events-none">
                                 <div className="absolute inset-[20%] border-2 border-blue-400 rounded-lg" />
@@ -465,7 +465,7 @@ export default function FaceRecognitionPage() {
                                   size="lg"
                                   variant="outline"
                                   onClick={stopCamera}
-                                  className="bg-white/90 dark:bg-zinc-900/90"
+                                  className="bg-card/90"
                                 >
                                   <X className="h-5 w-5" />
                                   Cancel
@@ -477,10 +477,10 @@ export default function FaceRecognitionPage() {
                               <div className="p-4 rounded-full bg-blue-50 dark:bg-blue-900/20 mb-4">
                                 <ScanFace className="h-8 w-8 text-blue-500" />
                               </div>
-                              <h3 className="text-lg font-medium text-zinc-900 dark:text-white mb-2">
+                              <h3 className="text-lg font-medium text-foreground mb-2">
                                 Face Recognition
                               </h3>
-                              <p className="text-sm text-zinc-500 text-center max-w-sm mb-6">
+                              <p className="text-sm text-muted-foreground text-center max-w-sm mb-6">
                                 Use your camera to capture a face or upload an
                                 image to identify a student
                               </p>
@@ -604,7 +604,6 @@ export default function FaceRecognitionPage() {
                       <Input
                         label="Student Name"
                         placeholder="Search by name..."
-                        icon={<Search className="h-4 w-4" />}
                         value={searchName}
                         onChange={(e) => {
                           setSearchName(e.target.value);
@@ -684,7 +683,7 @@ export default function FaceRecognitionPage() {
                             key={student.id}
                             initial={{ opacity: 0, y: 10 }}
                             animate={{ opacity: 1, y: 0 }}
-                            className="flex items-center justify-between p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/50 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors cursor-pointer"
+                            className="flex items-center justify-between p-3 rounded-lg bg-muted/50 hover:bg-muted transition-colors cursor-pointer"
                             onClick={() => {
                               setMatchedStudent(student);
                               setSearchResults([]);
@@ -698,10 +697,10 @@ export default function FaceRecognitionPage() {
                                 size="md"
                               />
                               <div>
-                                <p className="font-medium text-zinc-900 dark:text-white">
+                                <p className="font-medium text-foreground">
                                   {student.name}
                                 </p>
-                                <p className="text-sm text-zinc-500">
+                                <p className="text-sm text-muted-foreground">
                                   {student.roll_number} • {student.departments?.code}
                                 </p>
                               </div>
@@ -730,7 +729,7 @@ export default function FaceRecognitionPage() {
                 {isLoading ? (
                   <div className="flex flex-col items-center justify-center py-12">
                     <Spinner size="lg" />
-                    <p className="text-sm text-zinc-500 mt-4">
+                    <p className="text-sm text-muted-foreground mt-4">
                       Processing image...
                     </p>
                   </div>
@@ -771,29 +770,29 @@ export default function FaceRecognitionPage() {
 
                     {/* Student Info */}
                     <div className="text-center">
-                      <h3 className="text-xl font-bold text-zinc-900 dark:text-white">
+                      <h3 className="text-xl font-bold text-foreground">
                         {matchedStudent.name}
                       </h3>
-                      <p className="text-zinc-500 mt-1">
+                      <p className="text-muted-foreground mt-1">
                         Roll Number: {matchedStudent.roll_number}
                       </p>
                     </div>
 
                     {/* Details Grid */}
                     <div className="grid grid-cols-2 gap-4">
-                      <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                      <div className="p-3 rounded-lg bg-muted">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">
                           Department
                         </p>
-                        <p className="font-medium text-zinc-900 dark:text-white mt-1">
+                        <p className="font-medium text-foreground mt-1">
                           {matchedStudent.departments?.name || "N/A"}
                         </p>
                       </div>
-                      <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                        <p className="text-xs text-zinc-500 uppercase tracking-wide">
+                      <div className="p-3 rounded-lg bg-muted">
+                        <p className="text-xs text-muted-foreground uppercase tracking-wide">
                           Year
                         </p>
-                        <p className="font-medium text-zinc-900 dark:text-white mt-1">
+                        <p className="font-medium text-foreground mt-1">
                           {matchedStudent.year}
                           {matchedStudent.year === 1
                             ? "st"
@@ -862,13 +861,13 @@ export default function FaceRecognitionPage() {
                   </motion.div>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12">
-                    <div className="p-4 rounded-full bg-zinc-100 dark:bg-zinc-800 mb-4">
-                      <User className="h-8 w-8 text-zinc-400" />
+                    <div className="p-4 rounded-full bg-muted mb-4">
+                      <User className="h-8 w-8 text-muted-foreground" />
                     </div>
-                    <h3 className="text-lg font-medium text-zinc-900 dark:text-white mb-2">
+                    <h3 className="text-lg font-medium text-foreground mb-2">
                       No Student Selected
                     </h3>
-                    <p className="text-sm text-zinc-500 text-center max-w-sm">
+                    <p className="text-sm text-muted-foreground text-center max-w-sm">
                       {searchMode === "face"
                         ? "Capture or upload an image to identify a student using face recognition"
                         : "Search for a student using roll number, name, or other filters"}

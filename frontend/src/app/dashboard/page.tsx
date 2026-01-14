@@ -90,10 +90,10 @@ export default function DashboardPage() {
                     <CardContent className="p-6">
                       <div className="flex items-start justify-between">
                         <div>
-                          <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                          <p className="text-sm text-muted-foreground">
                             {stat.title}
                           </p>
-                          <p className="text-3xl font-bold mt-2 text-zinc-900 dark:text-white">
+                          <p className="text-3xl font-bold mt-2 text-foreground">
                             {stat.value.toLocaleString()}
                           </p>
                           <div className="flex items-center gap-1 mt-2">
@@ -101,7 +101,7 @@ export default function DashboardPage() {
                             <span className="text-xs text-emerald-500 font-medium">
                               {stat.trend}
                             </span>
-                            <span className="text-xs text-zinc-400">vs last month</span>
+                            <span className="text-xs text-muted-foreground/70">vs last month</span>
                           </div>
                         </div>
                         <div className={`p-3 rounded-xl ${stat.color}`}>
@@ -127,7 +127,7 @@ export default function DashboardPage() {
                     <CardTitle className="text-lg">Recent Students</CardTitle>
                     <a
                       href="/dashboard/students"
-                      className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition-colors"
+                      className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
                     >
                       View all
                       <ArrowUpRight className="h-3 w-3" />
@@ -139,24 +139,24 @@ export default function DashboardPage() {
                         stats.recentStudents.map((student) => (
                           <div
                             key={student.id}
-                            className="flex items-center gap-4 p-3 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                            className="flex items-center gap-4 p-3 rounded-xl hover:bg-secondary/50 transition-colors"
                           >
                             <Avatar fallback={student.name} />
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-zinc-900 dark:text-white truncate">
+                              <p className="font-medium text-card-foreground truncate">
                                 {student.name}
                               </p>
-                              <p className="text-sm text-zinc-500 truncate">
+                              <p className="text-sm text-muted-foreground truncate">
                                 {student.roll_number}
                               </p>
                             </div>
-                            <span className="text-xs text-zinc-400">
+                            <span className="text-xs text-muted-foreground/70">
                               {formatDate(student.created_at)}
                             </span>
                           </div>
                         ))
                       ) : (
-                        <p className="text-center text-zinc-500 py-4">
+                        <p className="text-center text-muted-foreground py-4">
                           No students added yet
                         </p>
                       )}
@@ -176,7 +176,7 @@ export default function DashboardPage() {
                     <CardTitle className="text-lg">Recent Courses</CardTitle>
                     <a
                       href="/dashboard/courses"
-                      className="text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition-colors"
+                      className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1 transition-colors"
                     >
                       View all
                       <ArrowUpRight className="h-3 w-3" />
@@ -188,26 +188,26 @@ export default function DashboardPage() {
                         stats.recentCourses.map((course) => (
                           <div
                             key={course.id}
-                            className="flex items-center gap-4 p-3 rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                            className="flex items-center gap-4 p-3 rounded-xl hover:bg-secondary/50 transition-colors"
                           >
-                            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-zinc-100 dark:bg-zinc-800">
-                              <BookOpen className="h-4 w-4 text-zinc-600 dark:text-zinc-400" />
+                            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-muted">
+                              <BookOpen className="h-4 w-4 text-muted-foreground" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-medium text-zinc-900 dark:text-white truncate">
+                              <p className="font-medium text-card-foreground truncate">
                                 {course.name}
                               </p>
                               <Badge variant="secondary" className="mt-1">
                                 {course.code}
                               </Badge>
                             </div>
-                            <span className="text-xs text-zinc-400">
+                            <span className="text-xs text-muted-foreground/70">
                               {formatDate(course.created_at)}
                             </span>
                           </div>
                         ))
                       ) : (
-                        <p className="text-center text-zinc-500 py-4">
+                        <p className="text-center text-muted-foreground py-4">
                           No courses added yet
                         </p>
                       )}
@@ -238,12 +238,12 @@ export default function DashboardPage() {
                       <a
                         key={action.title}
                         href={action.href}
-                        className="flex flex-col items-center gap-3 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 hover:border-zinc-300 dark:hover:border-zinc-700 transition-all"
+                        className="flex flex-col items-center gap-3 p-4 rounded-xl border border-border hover:bg-secondary/50 hover:border-border/60 transition-all"
                       >
-                        <div className="p-3 rounded-xl bg-zinc-100 dark:bg-zinc-800">
-                          <action.icon className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
+                        <div className="p-3 rounded-xl bg-muted">
+                          <action.icon className="h-5 w-5 text-muted-foreground" />
                         </div>
-                        <span className="text-sm font-medium text-zinc-900 dark:text-white">
+                        <span className="text-sm font-medium text-foreground">
                           {action.title}
                         </span>
                       </a>

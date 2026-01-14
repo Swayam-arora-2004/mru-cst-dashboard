@@ -69,29 +69,29 @@ export function Modal({
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: 0.2 }}
               className={cn(
-                "w-full bg-white dark:bg-zinc-900 rounded-2xl shadow-xl overflow-hidden",
+                "w-full bg-card rounded-2xl shadow-xl overflow-hidden",
                 sizeClasses[size]
               )}
               onClick={(e) => e.stopPropagation()}
             >
               {/* Header */}
               {(title || description) && (
-                <div className="flex items-start justify-between p-6 border-b border-zinc-200 dark:border-zinc-800">
+                <div className="flex items-start justify-between p-6 border-b border-border">
                   <div>
                     {title && (
-                      <h2 className="text-xl font-semibold text-zinc-900 dark:text-zinc-100">
+                      <h2 className="text-xl font-semibold text-card-foreground">
                         {title}
                       </h2>
                     )}
                     {description && (
-                      <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+                      <p className="mt-1 text-sm text-muted-foreground">
                         {description}
                       </p>
                     )}
                   </div>
                   <button
                     onClick={onClose}
-                    className="p-2 -m-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                    className="p-2 -m-2 text-muted-foreground hover:text-foreground transition-colors rounded-lg hover:bg-muted"
                   >
                     <X className="h-5 w-5" />
                   </button>

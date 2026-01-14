@@ -86,16 +86,16 @@ export default function LoginPage() {
         {/* Back button */}
         <Link
           href="/"
-          className="inline-flex items-center gap-2 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-6 transition-colors"
+          className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground mb-6 transition-colors"
         >
           <ArrowLeft className="h-4 w-4" />
           Back to home
         </Link>
 
-        <Card className="border-zinc-200 dark:border-zinc-800">
+        <Card className="border-border">
           <CardHeader className="text-center pb-2">
-            <div className="flex items-center justify-center w-14 h-14 mx-auto mb-4 rounded-xl bg-zinc-900 dark:bg-white">
-              <GraduationCap className="h-7 w-7 text-white dark:text-zinc-900" />
+            <div className="flex items-center justify-center w-14 h-14 mx-auto mb-4 rounded-xl bg-primary">
+              <GraduationCap className="h-7 w-7 text-primary-foreground" />
             </div>
             <CardTitle className="text-2xl">Welcome back</CardTitle>
             <CardDescription>
@@ -137,10 +137,10 @@ export default function LoginPage() {
               </div>
 
               <div className="flex items-center justify-between text-sm">
-                <label className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">
+                <label className="flex items-center gap-2 text-muted-foreground">
                   <input
                     type="checkbox"
-                    className="rounded border-zinc-300 dark:border-zinc-600"
+                    className="rounded border-border"
                   />
                   Remember me
                 </label>
@@ -154,9 +154,9 @@ export default function LoginPage() {
               </Button>
             </form>
 
-            <div className="mt-6 text-center text-sm text-zinc-500">
-              Don&apos;t have an account?{" "}
-              <Link href="/register" className="text-zinc-900 dark:text-white font-medium hover:underline">
+            <div className="mt-6 text-center text-sm text-muted-foreground">
+              Don't have an account?{" "}
+              <Link href="/register" className="text-foreground font-medium hover:underline">
                 Create one
               </Link>
             </div>

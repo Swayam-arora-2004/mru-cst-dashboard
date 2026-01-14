@@ -53,8 +53,8 @@ export function ThemeToggle({ className }: { className?: string }) {
       onClick={cycleTheme}
       className={cn(
         "inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
-        "bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700",
-        "text-zinc-900 dark:text-white",
+        "bg-muted hover:bg-muted/80",
+        "text-foreground",
         className
       )}
       title={`Current theme: ${getLabel()}. Click to cycle.`}

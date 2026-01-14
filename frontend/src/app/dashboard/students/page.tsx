@@ -362,7 +362,7 @@ export default function StudentsPage() {
   const renderStudentForm = (onSubmit: (e: React.FormEvent) => void, submitLabel: string) => (
     <form onSubmit={onSubmit} className="space-y-4">
       {/* Profile Image Upload */}
-      <div className="flex flex-col items-center gap-4 p-4 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-xl bg-zinc-50 dark:bg-zinc-800/50">
+      <div className="flex flex-col items-center gap-4 p-4 border border-dashed border-border rounded-xl bg-muted/50">
         <div className="relative">
           {imagePreview ? (
             <div className="relative">
@@ -380,8 +380,8 @@ export default function StudentsPage() {
               </button>
             </div>
           ) : (
-            <div className="w-24 h-24 rounded-full bg-zinc-200 dark:bg-zinc-700 flex items-center justify-center">
-              <ImagePlus className="h-8 w-8 text-zinc-400" />
+            <div className="w-24 h-24 rounded-full bg-muted flex items-center justify-center">
+              <ImagePlus className="h-8 w-8 text-muted-foreground" />
             </div>
           )}
         </div>
@@ -402,17 +402,17 @@ export default function StudentsPage() {
             onChange={handleImageSelect}
             className="hidden"
           />
-          <p className="text-xs text-zinc-500 mt-2">
+          <p className="text-xs text-muted-foreground mt-2">
             JPG, PNG up to 5MB
           </p>
         </div>
         {imagePreview && (
-          <label className="flex items-center gap-2 text-sm text-zinc-600 dark:text-zinc-400 cursor-pointer">
+          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={generateFaceEncoding}
               onChange={(e) => setGenerateFaceEncoding(e.target.checked)}
-              className="rounded border-zinc-300 dark:border-zinc-600"
+              className="rounded border-border"
             />
             <span>Enable face recognition for this student</span>
           </label>
@@ -538,14 +538,13 @@ export default function StudentsPage() {
           <div className="flex-1">
             <Input
               placeholder="Search by name, roll number, or email..."
-              icon={<Search className="h-4 w-4" />}
               onChange={(e) => debouncedSearch(e.target.value)}
             />
           </div>
           <Button
             variant="outline"
             onClick={() => setShowFilters(!showFilters)}
-            className={showFilters ? "bg-zinc-100 dark:bg-zinc-800" : ""}
+            className={showFilters ? "bg-muted" : ""}
           >
             <Filter className="h-4 w-4" />
             Filters
@@ -649,10 +648,10 @@ export default function StudentsPage() {
                           size="lg"
                         />
                         <div className="flex-1 min-w-0">
-                          <h3 className="font-medium text-zinc-900 dark:text-white truncate">
+                          <h3 className="font-medium text-foreground truncate">
                             {student.name}
                           </h3>
-                          <p className="text-sm text-zinc-500 truncate">
+                          <p className="text-sm text-muted-foreground truncate">
                             {student.roll_number}
                           </p>
                           <div className="flex flex-wrap gap-2 mt-2">
@@ -665,7 +664,7 @@ export default function StudentsPage() {
                           </div>
                         </div>
                         <div className="relative">
-                          <button className="p-2 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors opacity-0 group-hover:opacity-100">
+                          <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100">
                             <MoreVertical className="h-4 w-4" />
                           </button>
                           <div className="absolute right-0 top-full mt-1 w-40 py-1 bg-white dark:bg-zinc-900 rounded-xl shadow-lg border border-zinc-200 dark:border-zinc-800 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">

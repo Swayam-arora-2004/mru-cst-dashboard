@@ -348,7 +348,7 @@ export default function CoursesPage() {
                   <p className="text-sm text-red-500">This code is already in use</p>
                   {codeValidation.suggestions.length > 0 && (
                     <div className="mt-1">
-                      <p className="text-xs text-zinc-500">Try these alternatives:</p>
+                      <p className="text-xs text-muted-foreground">Try these alternatives:</p>
                       <div className="flex flex-wrap gap-1 mt-1">
                         {codeValidation.suggestions.map((s) => (
                           <button
@@ -357,7 +357,7 @@ export default function CoursesPage() {
                             onClick={() =>
                               setFormData((prev) => ({ ...prev, code: s }))
                             }
-                            className="px-2 py-0.5 text-xs bg-zinc-100 dark:bg-zinc-800 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-700 transition-colors"
+                            className="px-2 py-0.5 text-xs bg-muted rounded-md hover:bg-muted/80 transition-colors"
                           >
                             {s}
                           </button>
@@ -496,7 +496,7 @@ export default function CoursesPage() {
           <Button
             variant="outline"
             onClick={() => setShowFilters(!showFilters)}
-            className={showFilters ? "bg-zinc-100 dark:bg-zinc-800" : ""}
+            className={showFilters ? "bg-muted" : ""}
           >
             <Filter className="h-4 w-4" />
             Filters
@@ -601,13 +601,13 @@ export default function CoursesPage() {
                             </Badge>
                             <Badge variant="outline">{course.credits} credits</Badge>
                           </div>
-                          <h3 className="font-semibold text-lg text-zinc-900 dark:text-white mb-1">
+                          <h3 className="font-semibold text-lg text-foreground mb-1">
                             {course.code}
                           </h3>
-                          <p className="text-sm text-zinc-600 dark:text-zinc-400 line-clamp-2">
+                          <p className="text-sm text-muted-foreground line-clamp-2">
                             {course.name}
                           </p>
-                          <p className="text-xs text-zinc-400 mt-2">
+                          <p className="text-xs text-muted-foreground/70 mt-2">
                             Semester {course.semester} • {course.departments?.code || "N/A"}
                           </p>
                         </div>
