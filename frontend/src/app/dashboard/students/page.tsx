@@ -17,6 +17,7 @@ import { EmptyState } from "@/components/ui/empty-state";
 import { studentsApi, generalApi, faceRecognitionApi, Student, Department, Class } from "@/lib/api";
 import { debounce, formatDate } from "@/lib/utils";
 import { API_CONFIG } from "@/lib/constants";
+import { getSemesterOptions, getYearForSemester } from "@/lib/yearSemesterUtils";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -480,19 +481,24 @@ export default function StudentsPage() {
             { value: "4", label: "4th Year" },
           ]}
           value={formData.year}
-          onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+          onChange={(e) => {
+            const newYear = e.target.value;
+            setFormData({ ...formData, year: newYear, semester: "" });
+          }}
           required
         />
         <Select
           label="Semester"
           placeholder="Select semester"
-          options={Array.from({ length: 8 }, (_, i) => ({
-            value: (i + 1).toString(),
-            label: `Semester ${i + 1}`,
-          }))}
+          options={getSemesterOptions(formData.year)}
           value={formData.semester}
-          onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
+          onChange={(e) => {
+            const newSemester = e.target.value;
+            const correspondingYear = getYearForSemester(newSemester).toString();
+            setFormData({ ...formData, semester: newSemester, year: correspondingYear });
+          }}
           required
+          // hint={formData.year ? `Year ${formData.year} semesters only` : "Select year first"}
         />
       </div>
       <Input

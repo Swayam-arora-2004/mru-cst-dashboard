@@ -34,6 +34,7 @@ import {
   CourseCodeSuggestion,
 } from "@/lib/api";
 import { debounce } from "@/lib/utils";
+import { getSemesterOptions, getYearForSemester } from "@/lib/yearSemesterUtils";
 
 const courseTypeColors: Record<string, "default" | "primary" | "success" | "warning" | "destructive"> = {
   lecture: "primary",
@@ -431,7 +432,7 @@ export default function CoursesPage() {
       <Select
         label="Semester"
         placeholder="Select semester"
-        options={Array.from({ length: 8 }, (_, i) => ({
+        options={Array.from({ length: 12 }, (_, i) => ({
           value: (i + 1).toString(),
           label: `Semester ${i + 1}`,
         }))}
@@ -765,14 +766,13 @@ export default function CoursesPage() {
               <Select
                 label="Semester"
                 placeholder="Select semester"
-                options={Array.from({ length: 8 }, (_, i) => ({
-                  value: (i + 1).toString(),
-                  label: `Semester ${i + 1}`,
-                }))}
+                options={getSemesterOptions(generateParams.year)}
                 value={generateParams.semester}
-                onChange={(e) =>
-                  setGenerateParams((prev) => ({ ...prev, semester: e.target.value }))
-                }
+                onChange={(e) => {
+                  const newSemester = e.target.value;
+                  const correspondingYear = getYearForSemester(newSemester).toString();
+                  setGenerateParams((prev) => ({ ...prev, semester: newSemester, year: correspondingYear }));
+                }}
                 required
               />
             </div>
@@ -788,9 +788,10 @@ export default function CoursesPage() {
                   { value: "4", label: "4th Year" },
                 ]}
                 value={generateParams.year}
-                onChange={(e) =>
-                  setGenerateParams((prev) => ({ ...prev, year: e.target.value }))
-                }
+                onChange={(e) => {
+                  const newYear = e.target.value;
+                  setGenerateParams((prev) => ({ ...prev, year: newYear, semester: "" }));
+                }}
               />
               <Input
                 label="Specialization (Optional)"
