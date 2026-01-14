@@ -5,8 +5,8 @@ import { AuthRequest, ApiResponse } from '../types';
 
 const router = Router();
 
-// Get all departments
-router.get('/departments', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+// Get all departments (public endpoint for registration)
+router.get('/departments', async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const supabase = getSupabaseAdminClient();
 
