@@ -3,11 +3,12 @@ import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
 import { config } from '../config';
 import { getSupabaseAdminClient } from '../lib/supabase';
-import { ApiResponse } from '../types';
+import { ApiResponse, AuthRequest } from '../types';
 import { validate } from '../middleware/validate';
-import { registerSchema, loginSchema } from '../schemas';
+import { registerSchema, loginSchema, updateProfileSchema, changePasswordSchema, updatePreferencesSchema } from '../schemas';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { trackLoginAttempts, recordLoginAttempt } from '../middleware/security';
+import { authenticate } from '../middleware/auth';
 import logger from '../lib/logger';
 
 const router = Router();
@@ -196,6 +197,225 @@ router.get(
       };
       res.status(401).json(response);
     }
+  })
+);
+
+// Get user profile
+router.get(
+  '/profile',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<void> => {
+    const supabase = getSupabaseAdminClient();
+    const { data: user, error } = await supabase
+      .from('teachers')
+      .select('id, name, email, phone, designation, department_id, created_at, updated_at')
+      .eq('id', req.user!.id)
+      .single();
+
+    if (error || !user) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User not found',
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      data: { user },
+    };
+    res.status(200).json(response);
+  })
+);
+
+// Update user profile
+router.put(
+  '/profile',
+  authenticate,
+  validate(updateProfileSchema),
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<void> => {
+    const { name, phone, designation, department_id } = req.body;
+    const supabase = getSupabaseAdminClient();
+
+    const updateData: Record<string, unknown> = {};
+    if (name) updateData.name = name;
+    if (phone !== undefined) updateData.phone = phone;
+    if (designation) updateData.designation = designation;
+    if (department_id) updateData.department_id = department_id;
+
+    const { data: updatedUser, error } = await supabase
+      .from('teachers')
+      .update(updateData)
+      .eq('id', req.user!.id)
+      .select('id, name, email, phone, designation, department_id')
+      .single();
+
+    if (error) {
+      throw error;
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      data: { user: updatedUser },
+      message: 'Profile updated successfully',
+    };
+    res.status(200).json(response);
+  })
+);
+
+// Change password
+router.put(
+  '/password',
+  authenticate,
+  validate(changePasswordSchema),
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<void> => {
+    const { currentPassword, newPassword } = req.body;
+    const supabase = getSupabaseAdminClient();
+
+    // Get current user with password
+    const { data: user, error } = await supabase
+      .from('teachers')
+      .select('id, password')
+      .eq('id', req.user!.id)
+      .single();
+
+    if (error || !user) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User not found',
+      };
+      res.status(404).json(response);
+      return;
+    }
+
+    // Verify current password
+    const isValidPassword = await bcrypt.compare(currentPassword, user.password);
+    if (!isValidPassword) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'Current password is incorrect',
+      };
+      res.status(401).json(response);
+      return;
+    }
+
+    // Hash new password
+    const salt = await bcrypt.genSalt(config.security.bcryptRounds);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+
+    // Update password
+    const { error: updateError } = await supabase
+      .from('teachers')
+      .update({ password: hashedPassword })
+      .eq('id', req.user!.id);
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      message: 'Password changed successfully',
+    };
+    res.status(200).json(response);
+  })
+);
+
+// Get user preferences
+router.get(
+  '/preferences',
+  authenticate,
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<void> => {
+    const supabase = getSupabaseAdminClient();
+    
+    // Check if preferences table exists, if not return default values
+    const { data: preferences, error } = await supabase
+      .from('user_preferences')
+      .select('*')
+      .eq('user_id', req.user!.id)
+      .single();
+
+    if (error) {
+      // Return default preferences if none exist
+      const defaultPreferences = {
+        emailNotifications: true,
+        pushNotifications: true,
+        weeklyReport: true,
+        theme: 'system',
+      };
+      
+      const response: ApiResponse = {
+        success: true,
+        data: { preferences: defaultPreferences },
+      };
+      res.status(200).json(response);
+      return;
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      data: { preferences },
+    };
+    res.status(200).json(response);
+  })
+);
+
+// Update user preferences
+router.put(
+  '/preferences',
+  authenticate,
+  validate(updatePreferencesSchema),
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<void> => {
+    const { emailNotifications, pushNotifications, weeklyReport, theme } = req.body;
+    const supabase = getSupabaseAdminClient();
+
+    const updateData: Record<string, unknown> = {};
+    if (emailNotifications !== undefined) updateData.email_notifications = emailNotifications;
+    if (pushNotifications !== undefined) updateData.push_notifications = pushNotifications;
+    if (weeklyReport !== undefined) updateData.weekly_report = weeklyReport;
+    if (theme) updateData.theme = theme;
+
+    // Try to update existing preferences
+    const { data: existing } = await supabase
+      .from('user_preferences')
+      .select('id')
+      .eq('user_id', req.user!.id)
+      .single();
+
+    let updatedPreferences;
+    if (existing) {
+      // Update existing
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .update(updateData)
+        .eq('user_id', req.user!.id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      updatedPreferences = data;
+    } else {
+      // Create new
+      const { data, error } = await supabase
+        .from('user_preferences')
+        .insert({
+          user_id: req.user!.id,
+          ...updateData,
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+      updatedPreferences = data;
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      data: { preferences: updatedPreferences },
+      message: 'Preferences updated successfully',
+    };
+    res.status(200).json(response);
   })
 );
 

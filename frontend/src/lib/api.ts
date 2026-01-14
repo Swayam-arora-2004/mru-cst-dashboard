@@ -89,6 +89,28 @@ export const authApi = {
     }),
   
   verify: () => api<{ user: User }>("/auth/verify"),
+  
+  getProfile: () => api<{ user: User }>("/auth/profile"),
+  
+  updateProfile: (data: UpdateProfileData) =>
+    api<{ user: User }>("/auth/profile", {
+      method: "PUT",
+      body: data,
+    }),
+  
+  changePassword: (data: ChangePasswordData) =>
+    api("/auth/password", {
+      method: "PUT",
+      body: data,
+    }),
+  
+  getPreferences: () => api<{ preferences: UserPreferences }>("/auth/preferences"),
+  
+  updatePreferences: (data: Partial<UserPreferences>) =>
+    api<{ preferences: UserPreferences }>("/auth/preferences", {
+      method: "PUT",
+      body: data,
+    }),
 };
 
 // Students endpoints
@@ -234,6 +256,7 @@ export interface User {
   email: string;
   designation: string;
   department_id?: string;
+  phone?: string;
 }
 
 export interface RegisterData {
@@ -243,6 +266,25 @@ export interface RegisterData {
   phone?: string;
   department_id?: string;
   designation?: string;
+}
+
+export interface UpdateProfileData {
+  name?: string;
+  phone?: string;
+  designation?: string;
+  department_id?: string;
+}
+
+export interface ChangePasswordData {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface UserPreferences {
+  emailNotifications: boolean;
+  pushNotifications: boolean;
+  weeklyReport: boolean;
+  theme: 'light' | 'dark' | 'system';
 }
 
 export interface Student {

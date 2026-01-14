@@ -25,7 +25,7 @@ import { Avatar } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/authStore";
-import { generalApi, type SystemInfo } from "@/lib/api";
+import { generalApi, authApi, type SystemInfo, type UserPreferences } from "@/lib/api";
 
 type SettingsTab = "profile" | "security" | "preferences" | "system";
 
@@ -35,6 +35,9 @@ export default function SettingsPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [isLoadingSystemInfo, setIsLoadingSystemInfo] = useState(false);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
+  const [departments, setDepartments] = useState<Array<{ id: string; code: string; name: string }>>([]);
 
   // Profile state
   const [profileData, setProfileData] = useState({
@@ -56,27 +59,92 @@ export default function SettingsPage() {
   const [showNewPassword, setShowNewPassword] = useState(false);
 
   // Preferences state
-  const [preferences, setPreferences] = useState({
+  const [preferences, setPreferences] = useState<{
+    theme: 'light' | 'dark' | 'system';
+    emailNotifications: boolean;
+    pushNotifications: boolean;
+    weeklyReport: boolean;
+  }>({
     theme: "system",
     emailNotifications: true,
     pushNotifications: true,
     weeklyReport: true,
   });
 
+  // Fetch profile data on mount
   useEffect(() => {
-    if (user) {
-      // Handle both 'name' field and potential first_name/last_name fields
-      const nameParts = user.name?.split(' ') || ['', ''];
-      setProfileData({
-        firstName: user.first_name || nameParts[0] || "",
-        lastName: user.last_name || nameParts.slice(1).join(' ') || "",
-        email: user.email || "",
-        phone: "",
-        department: user.department_id || "",
-        designation: user.designation || "",
-      });
-    }
+    const fetchProfile = async () => {
+      if (!user) return;
+      setIsLoadingProfile(true);
+      try {
+        const response = await authApi.getProfile();
+        if (response.success && response.data) {
+          const userData = response.data.user;
+          // Split the name into first and last name
+          const nameParts = (userData.name || '').trim().split(' ');
+          const firstName = nameParts[0] || '';
+          const lastName = nameParts.slice(1).join(' ') || '';
+          
+          setProfileData({
+            firstName: firstName,
+            lastName: lastName,
+            email: userData.email || "",
+            phone: userData.phone || "",
+            department: userData.department_id || "",
+            designation: userData.designation || "",
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch profile:", error);
+        toast.error("Failed to load profile data");
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+    fetchProfile();
   }, [user]);
+
+  // Fetch departments on mount
+  useEffect(() => {
+    const fetchDepartments = async () => {
+      try {
+        const response = await generalApi.getDepartments();
+        if (response.success && response.data) {
+          setDepartments(response.data);
+        }
+      } catch (error) {
+        console.error("Failed to fetch departments:", error);
+      }
+    };
+    fetchDepartments();
+  }, []);
+
+  // Fetch preferences on mount or when preferences tab is active
+  useEffect(() => {
+    const fetchPreferences = async () => {
+      if (!user) return;
+      setIsLoadingPreferences(true);
+      try {
+        const response = await authApi.getPreferences();
+        if (response.success && response.data) {
+          const prefs = response.data.preferences;
+          setPreferences({
+            theme: prefs.theme || "system",
+            emailNotifications: prefs.emailNotifications ?? true,
+            pushNotifications: prefs.pushNotifications ?? true,
+            weeklyReport: prefs.weeklyReport ?? true,
+          });
+        }
+      } catch (error) {
+        console.error("Failed to fetch preferences:", error);
+      } finally {
+        setIsLoadingPreferences(false);
+      }
+    };
+    if (activeTab === "preferences") {
+      fetchPreferences();
+    }
+  }, [activeTab, user]);
 
   // Fetch system info when system tab is active
   useEffect(() => {
@@ -103,11 +171,34 @@ export default function SettingsPage() {
   const handleProfileSave = async () => {
     setIsLoading(true);
     try {
-      // API call would go here
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Profile updated successfully");
-    } catch (error) {
-      toast.error("Failed to update profile");
+      // Combine first and last name, handling empty lastName
+      const fullName = profileData.lastName 
+        ? `${profileData.firstName} ${profileData.lastName}`.trim()
+        : profileData.firstName.trim();
+      
+      if (!fullName) {
+        toast.error("Name is required");
+        setIsLoading(false);
+        return;
+      }
+      
+      const response = await authApi.updateProfile({
+        name: fullName,
+        phone: profileData.phone || undefined,
+        designation: profileData.designation || undefined,
+        department_id: profileData.department || undefined,
+      });
+      
+      if (response.success && response.data) {
+        // Update user in auth store
+        setUser(response.data.user);
+        toast.success("Profile updated successfully");
+      } else {
+        toast.error(response.error || "Failed to update profile");
+      }
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      toast.error(err.message || "Failed to update profile");
     } finally {
       setIsLoading(false);
     }
@@ -126,16 +217,24 @@ export default function SettingsPage() {
 
     setIsLoading(true);
     try {
-      // API call would go here
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Password changed successfully");
-      setSecurityData({
-        currentPassword: "",
-        newPassword: "",
-        confirmPassword: "",
+      const response = await authApi.changePassword({
+        currentPassword: securityData.currentPassword,
+        newPassword: securityData.newPassword,
       });
-    } catch (error) {
-      toast.error("Failed to change password");
+      
+      if (response.success) {
+        toast.success("Password changed successfully");
+        setSecurityData({
+          currentPassword: "",
+          newPassword: "",
+          confirmPassword: "",
+        });
+      } else {
+        toast.error(response.error || "Failed to change password");
+      }
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      toast.error(err.message || "Failed to change password");
     } finally {
       setIsLoading(false);
     }
@@ -144,11 +243,16 @@ export default function SettingsPage() {
   const handlePreferencesSave = async () => {
     setIsLoading(true);
     try {
-      // API call would go here
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-      toast.success("Preferences saved");
-    } catch (error) {
-      toast.error("Failed to save preferences");
+      const response = await authApi.updatePreferences(preferences);
+      
+      if (response.success) {
+        toast.success("Preferences saved successfully");
+      } else {
+        toast.error(response.error || "Failed to save preferences");
+      }
+    } catch (error: unknown) {
+      const err = error as { message?: string };
+      toast.error(err.message || "Failed to save preferences");
     } finally {
       setIsLoading(false);
     }
@@ -277,13 +381,31 @@ export default function SettingsPage() {
                       }
                     />
                     <Select
+                      label="Department"
+                      options={[
+                        { value: "", label: "Select Department" },
+                        ...departments.map((dept) => ({
+                          value: dept.id,
+                          label: `${dept.code} - ${dept.name}`,
+                        })),
+                      ]}
+                      value={profileData.department}
+                      onChange={(e) =>
+                        setProfileData((prev) => ({
+                          ...prev,
+                          department: e.target.value,
+                        }))
+                      }
+                    />
+                    <Select
                       label="Designation"
                       options={[
-                        { value: "professor", label: "Professor" },
-                        { value: "associate_professor", label: "Associate Professor" },
-                        { value: "assistant_professor", label: "Assistant Professor" },
-                        { value: "lecturer", label: "Lecturer" },
-                        { value: "hod", label: "Head of Department" },
+                        { value: "Professor", label: "Professor" },
+                        { value: "Associate Professor", label: "Associate Professor" },
+                        { value: "Assistant Professor", label: "Assistant Professor" },
+                        { value: "Lecturer", label: "Lecturer" },
+                        { value: "Head of Department", label: "Head of Department" },
+                        { value: "Teacher", label: "Teacher" },
                       ]}
                       value={profileData.designation}
                       onChange={(e) =>

@@ -26,6 +26,37 @@ export const loginSchema = z.object({
   }),
 });
 
+export const updateProfileSchema = z.object({
+  body: z.object({
+    name: z.string().min(2, 'Name must be at least 2 characters').max(255).optional(),
+    phone: z.string().optional(),
+    designation: z.string().optional(),
+    department_id: z.string().uuid('Invalid department ID').optional(),
+  }),
+});
+
+export const changePasswordSchema = z.object({
+  body: z.object({
+    currentPassword: z.string().min(1, 'Current password is required'),
+    newPassword: z
+      .string()
+      .min(8, 'Password must be at least 8 characters')
+      .regex(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+        'Password must contain at least one uppercase letter, one lowercase letter, and one number'
+      ),
+  }),
+});
+
+export const updatePreferencesSchema = z.object({
+  body: z.object({
+    emailNotifications: z.boolean().optional(),
+    pushNotifications: z.boolean().optional(),
+    weeklyReport: z.boolean().optional(),
+    theme: z.enum(['light', 'dark', 'system']).optional(),
+  }),
+});
+
 // ============ Student Schemas ============
 
 export const createStudentSchema = z.object({
@@ -145,8 +176,12 @@ export const idParamSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>['body'];
 export type LoginInput = z.infer<typeof loginSchema>['body'];
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>['body'];
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>['body'];
+export type UpdatePreferencesInput = z.infer<typeof updatePreferencesSchema>['body'];
 export type CreateStudentInput = z.infer<typeof createStudentSchema>['body'];
 export type UpdateStudentInput = z.infer<typeof updateStudentSchema>['body'];
 export type CreateCourseInput = z.infer<typeof createCourseSchema>['body'];
 export type UpdateCourseInput = z.infer<typeof updateCourseSchema>['body'];
 export type GenerateCodeInput = z.infer<typeof generateCodeSchema>['body'];
+

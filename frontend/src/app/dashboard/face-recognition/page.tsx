@@ -3,7 +3,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Camera,
   Upload,
   Search,
   User,
@@ -49,13 +48,9 @@ export default function FaceRecognitionPage() {
   const [faceApiLoaded, setFaceApiLoaded] = useState(false);
   const [faceApiError, setFaceApiError] = useState<string | null>(null);
 
-  // Camera state
-  const [isCameraActive, setIsCameraActive] = useState(false);
+  // Image upload state
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const streamRef = useRef<MediaStream | null>(null);
 
   // Manual search state
   const [rollNumber, setRollNumber] = useState("");
@@ -106,64 +101,6 @@ export default function FaceRecognitionPage() {
 
     fetchData();
   }, []);
-
-  // Cleanup camera on unmount
-  useEffect(() => {
-    return () => {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, []);
-
-  // Start camera
-  const startCamera = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: "user", width: 640, height: 480 },
-      });
-
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        streamRef.current = stream;
-        setIsCameraActive(true);
-      }
-    } catch (error) {
-      toast.error("Failed to access camera. Please check permissions.");
-    }
-  };
-
-  // Stop camera
-  const stopCamera = () => {
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setIsCameraActive(false);
-  };
-
-  // Capture image from camera
-  const captureImage = () => {
-    if (videoRef.current && canvasRef.current) {
-      const canvas = canvasRef.current;
-      const video = videoRef.current;
-
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-
-      const ctx = canvas.getContext("2d");
-      if (ctx) {
-        ctx.drawImage(video, 0, 0);
-        const imageData = canvas.toDataURL("image/jpeg", 0.9);
-        setCapturedImage(imageData);
-        stopCamera();
-        recognizeFace(imageData);
-      }
-    }
-  };
 
   // Handle file upload
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,7 +285,6 @@ export default function FaceRecognitionPage() {
     setSelectedDepartment("");
     setSelectedClass("");
     setSelectedYear("");
-    stopCamera();
   };
 
   const years = [
@@ -435,82 +371,37 @@ export default function FaceRecognitionPage() {
                     </Card>
                   )}
 
-                  {/* Camera/Upload Area */}
+                  {/* Image Upload Area */}
                   <Card>
                     <CardContent className="p-6">
                       {!capturedImage ? (
                         <div className="space-y-4">
-                          {/* Camera Preview */}
-                          {isCameraActive ? (
-                            <div className="relative">
-                              <video
-                                ref={videoRef}
-                                autoPlay
-                                playsInline
-                                muted
-                                className="w-full rounded-xl bg-black"
-                              />
-                              <div className="absolute inset-0 border-2 border-dashed border-blue-400 rounded-xl pointer-events-none">
-                                <div className="absolute inset-[20%] border-2 border-blue-400 rounded-lg" />
-                              </div>
-                              <div className="absolute bottom-4 left-0 right-0 flex justify-center gap-4">
-                                <Button
-                                  size="lg"
-                                  onClick={captureImage}
-                                  className="shadow-lg"
-                                >
-                                  <Camera className="h-5 w-5" />
-                                  Capture
-                                </Button>
-                                <Button
-                                  size="lg"
-                                  variant="outline"
-                                  onClick={stopCamera}
-                                  className="bg-card/90"
-                                >
-                                  <X className="h-5 w-5" />
-                                  Cancel
-                                </Button>
-                              </div>
+                          <div className="flex flex-col items-center justify-center py-12">
+                            <div className="p-4 rounded-full bg-blue-50 dark:bg-blue-900/20 mb-4">
+                              <ScanFace className="h-8 w-8 text-blue-500" />
                             </div>
-                          ) : (
-                            <div className="flex flex-col items-center justify-center py-12">
-                              <div className="p-4 rounded-full bg-blue-50 dark:bg-blue-900/20 mb-4">
-                                <ScanFace className="h-8 w-8 text-blue-500" />
-                              </div>
-                              <h3 className="text-lg font-medium text-foreground mb-2">
-                                Face Recognition
-                              </h3>
-                              <p className="text-sm text-muted-foreground text-center max-w-sm mb-6">
-                                Use your camera to capture a face or upload an
-                                image to identify a student
-                              </p>
-                              <div className="flex gap-4">
-                                <Button
-                                  onClick={startCamera}
-                                  disabled={!faceApiLoaded}
-                                >
-                                  <Camera className="h-4 w-4" />
-                                  Use Camera
-                                </Button>
-                                <Button
-                                  variant="outline"
-                                  onClick={() => fileInputRef.current?.click()}
-                                  disabled={!faceApiLoaded}
-                                >
-                                  <Upload className="h-4 w-4" />
-                                  Upload Image
-                                </Button>
-                              </div>
-                              <input
-                                ref={fileInputRef}
-                                type="file"
-                                accept="image/*"
-                                onChange={handleFileUpload}
-                                className="hidden"
-                              />
-                            </div>
-                          )}
+                            <h3 className="text-lg font-medium text-foreground mb-2">
+                              Face Recognition
+                            </h3>
+                            <p className="text-sm text-muted-foreground text-center max-w-sm mb-6">
+                              Upload an image to identify a student using facial recognition
+                            </p>
+                            <Button
+                              onClick={() => fileInputRef.current?.click()}
+                              disabled={!faceApiLoaded}
+                              size="lg"
+                            >
+                              <Upload className="h-4 w-4" />
+                              Upload Image
+                            </Button>
+                            <input
+                              ref={fileInputRef}
+                              type="file"
+                              accept="image/*"
+                              onChange={handleFileUpload}
+                              className="hidden"
+                            />
+                          </div>
                         </div>
                       ) : (
                         <div className="space-y-4">
@@ -551,9 +442,6 @@ export default function FaceRecognitionPage() {
                       )}
                     </CardContent>
                   </Card>
-
-                  {/* Hidden canvas for capture */}
-                  <canvas ref={canvasRef} className="hidden" />
                 </motion.div>
               ) : (
                 <motion.div

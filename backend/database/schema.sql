@@ -37,6 +37,18 @@ CREATE TABLE IF NOT EXISTS teachers (
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
 
+-- User preferences table
+CREATE TABLE IF NOT EXISTS user_preferences (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id UUID REFERENCES teachers(id) ON DELETE CASCADE UNIQUE NOT NULL,
+  email_notifications BOOLEAN DEFAULT true,
+  push_notifications BOOLEAN DEFAULT true,
+  weekly_report BOOLEAN DEFAULT true,
+  theme VARCHAR(20) DEFAULT 'system' CHECK (theme IN ('light', 'dark', 'system')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
 -- Students table
 CREATE TABLE IF NOT EXISTS students (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -110,6 +122,7 @@ CREATE INDEX IF NOT EXISTS idx_classes_department ON classes(department_id);
 CREATE INDEX IF NOT EXISTS idx_classes_year ON classes(year);
 CREATE INDEX IF NOT EXISTS idx_teachers_email ON teachers(email);
 CREATE INDEX IF NOT EXISTS idx_teachers_department ON teachers(department_id);
+CREATE INDEX IF NOT EXISTS idx_user_preferences_user ON user_preferences(user_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_student ON enrollments(student_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_course ON enrollments(course_id);
 CREATE INDEX IF NOT EXISTS idx_enrollments_status ON enrollments(status);
@@ -121,6 +134,7 @@ CREATE INDEX IF NOT EXISTS idx_course_assignments_class ON course_assignments(cl
 ALTER TABLE departments ENABLE ROW LEVEL SECURITY;
 ALTER TABLE classes ENABLE ROW LEVEL SECURITY;
 ALTER TABLE teachers ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_preferences ENABLE ROW LEVEL SECURITY;
 ALTER TABLE students ENABLE ROW LEVEL SECURITY;
 ALTER TABLE courses ENABLE ROW LEVEL SECURITY;
 ALTER TABLE enrollments ENABLE ROW LEVEL SECURITY;
@@ -130,6 +144,7 @@ ALTER TABLE course_assignments ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow service role full access" ON departments FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service role full access" ON classes FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service role full access" ON teachers FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Allow service role full access" ON user_preferences FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service role full access" ON students FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service role full access" ON courses FOR ALL USING (true) WITH CHECK (true);
 CREATE POLICY "Allow service role full access" ON enrollments FOR ALL USING (true) WITH CHECK (true);
