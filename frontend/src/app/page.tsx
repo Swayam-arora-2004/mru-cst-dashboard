@@ -59,7 +59,7 @@ export default function Home() {
           initial={{ scale: 0.8 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="flex items-center justify-center w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-zinc-900 to-zinc-700 dark:from-white dark:to-zinc-200 shadow-2xl"
+          className="flex items-center justify-center w-20 h-20 mx-auto mb-8 rounded-2xl bg-linear-to-br from-zinc-900 to-zinc-700 dark:from-white dark:to-zinc-200 shadow-2xl"
         >
           <GraduationCap className="h-10 w-10 text-white dark:text-zinc-900" />
         </motion.div>

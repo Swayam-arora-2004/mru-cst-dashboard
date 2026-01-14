@@ -69,7 +69,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 p-4">
+    <main className="min-h-screen flex items-center justify-center bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 p-4">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -101,7 +101,7 @@ export default function LoginPage() {
                 type="email"
                 label="Email"
                 placeholder="you@university.edu"
-                icon={<Mail className="h-4 w-4" />}
+                leftIcon={<Mail className="h-4 w-4" />}
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 required
@@ -110,7 +110,7 @@ export default function LoginPage() {
                 type="password"
                 label="Password"
                 placeholder="••••••••"
-                icon={<Lock className="h-4 w-4" />}
+                leftIcon={<Lock className="h-4 w-4" />}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required

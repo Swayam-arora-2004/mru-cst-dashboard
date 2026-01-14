@@ -29,7 +29,7 @@ export function Header({ title, description, action }: HeaderProps) {
           <div className="hidden md:block w-64">
             <Input
               placeholder="Search..."
-              icon={<Search className="h-4 w-4" />}
+              leftIcon={<Search className="h-4 w-4" />}
             />
           </div>
 

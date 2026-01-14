@@ -489,7 +489,7 @@ export default function CoursesPage() {
           <div className="flex-1">
             <Input
               placeholder="Search by name or code..."
-              icon={<Search className="h-4 w-4" />}
+              leftIcon={<Search className="h-4 w-4" />}
               onChange={(e) => debouncedSearch(e.target.value)}
             />
           </div>
@@ -725,7 +725,7 @@ export default function CoursesPage() {
         size="lg"
       >
         <div className="space-y-6">
-          <div className="p-4 rounded-xl bg-gradient-to-r from-violet-50 to-blue-50 dark:from-violet-900/20 dark:to-blue-900/20 border border-violet-100 dark:border-violet-800">
+          <div className="p-4 rounded-xl bg-linear-to-r from-violet-50 to-blue-50 dark:from-violet-900/20 dark:to-blue-900/20 border border-violet-100 dark:border-violet-800">
             <div className="flex items-start gap-3">
               <Sparkles className="h-5 w-5 text-violet-500 mt-0.5" />
               <div>

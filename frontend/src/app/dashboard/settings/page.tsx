@@ -427,7 +427,7 @@ export default function SettingsPage() {
                                 ? "bg-white border border-zinc-200"
                                 : theme === "dark"
                                   ? "bg-zinc-900"
-                                  : "bg-gradient-to-r from-white to-zinc-900"
+                                  : "bg-linear-to-r from-white to-zinc-900"
                             }`}
                           />
                           <p className="font-medium capitalize">{theme}</p>

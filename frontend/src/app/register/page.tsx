@@ -93,7 +93,7 @@ export default function RegisterPage() {
   ];
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 p-4 py-12">
+    <main className="min-h-screen flex items-center justify-center bg-linear-to-br from-zinc-50 to-zinc-100 dark:from-zinc-950 dark:to-zinc-900 p-4 py-12">
       <motion.div
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -126,7 +126,7 @@ export default function RegisterPage() {
                 name="name"
                 label="Full Name"
                 placeholder="Dr. John Doe"
-                icon={<User className="h-4 w-4" />}
+                leftIcon={<User className="h-4 w-4" />}
                 value={formData.name}
                 onChange={handleChange}
                 required
@@ -136,7 +136,7 @@ export default function RegisterPage() {
                 name="email"
                 label="Email"
                 placeholder="you@university.edu"
-                icon={<Mail className="h-4 w-4" />}
+                leftIcon={<Mail className="h-4 w-4" />}
                 value={formData.email}
                 onChange={handleChange}
                 required
@@ -147,7 +147,7 @@ export default function RegisterPage() {
                   name="password"
                   label="Password"
                   placeholder="••••••••"
-                  icon={<Lock className="h-4 w-4" />}
+                  leftIcon={<Lock className="h-4 w-4" />}
                   value={formData.password}
                   onChange={handleChange}
                   required
@@ -157,7 +157,7 @@ export default function RegisterPage() {
                   name="confirmPassword"
                   label="Confirm"
                   placeholder="••••••••"
-                  icon={<Lock className="h-4 w-4" />}
+                  leftIcon={<Lock className="h-4 w-4" />}
                   value={formData.confirmPassword}
                   onChange={handleChange}
                   required
@@ -168,7 +168,7 @@ export default function RegisterPage() {
                 name="phone"
                 label="Phone (Optional)"
                 placeholder="+91 98765 43210"
-                icon={<Phone className="h-4 w-4" />}
+                leftIcon={<Phone className="h-4 w-4" />}
                 value={formData.phone}
                 onChange={handleChange}
               />
