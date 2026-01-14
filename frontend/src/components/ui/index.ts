@@ -80,3 +80,5 @@ export type { AvatarProps } from "./avatar";
 
 export { EmptyState } from "./empty-state";
 export type { EmptyStateProps } from "./empty-state";
+
+export { ThemeToggle } from "./theme-toggle";

@@ -7,6 +7,7 @@ import { GraduationCap, ArrowRight, Sparkles, Users, BarChart3 } from "lucide-re
 import { Button } from "@/components/ui/button";
 import { useAuthStore } from "@/store/authStore";
 import { LoadingOverlay } from "@/components/ui/spinner";
+import { ThemeToggle } from "@/components/ui/theme-toggle";
 
 export default function Home() {
   const router = useRouter();
@@ -41,7 +42,12 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-zinc-50 dark:bg-zinc-950">
+    <main className="min-h-screen flex flex-col items-center justify-center relative overflow-hidden bg-background">
+      {/* Theme Toggle */}
+      <div className="absolute top-4 right-4 z-20">
+        <ThemeToggle />
+      </div>
+
       {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden">
         <div className="absolute -top-40 -right-40 w-80 h-80 bg-violet-500/10 rounded-full blur-3xl" />
@@ -59,16 +65,16 @@ export default function Home() {
           initial={{ scale: 0.8 }}
           animate={{ scale: 1 }}
           transition={{ delay: 0.2, type: "spring", stiffness: 200 }}
-          className="flex items-center justify-center w-20 h-20 mx-auto mb-8 rounded-2xl bg-linear-to-br from-zinc-900 to-zinc-700 dark:from-white dark:to-zinc-200 shadow-2xl"
+          className="flex items-center justify-center w-20 h-20 mx-auto mb-8 rounded-2xl bg-gradient-to-br from-primary to-primary/80 shadow-2xl"
         >
-          <GraduationCap className="h-10 w-10 text-white dark:text-zinc-900" />
+          <GraduationCap className="h-10 w-10 text-primary-foreground" />
         </motion.div>
 
         {/* Title */}
-        <h1 className="text-4xl md:text-6xl font-bold text-zinc-900 dark:text-white mb-4 tracking-tight">
+        <h1 className="text-4xl md:text-6xl font-bold text-foreground mb-4 tracking-tight">
           MRU Dashboard
         </h1>
-        <p className="text-lg md:text-xl text-zinc-600 dark:text-zinc-400 mb-10 max-w-lg mx-auto leading-relaxed">
+        <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-lg mx-auto leading-relaxed">
           Modern University ERP System for managing students, courses, and academic operations
         </p>
 
@@ -84,15 +90,15 @@ export default function Home() {
               initial={{ opacity: 0, y: 20 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.4 + i * 0.1 }}
-              className="group p-5 rounded-2xl bg-white dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 hover:shadow-lg transition-all duration-300"
+              className="group p-5 rounded-2xl bg-card border border-border hover:border-border/80 hover:shadow-lg transition-all duration-300"
             >
-              <div className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800">
-                <feature.icon className="h-5 w-5 text-zinc-600 dark:text-zinc-400" />
+              <div className="w-10 h-10 rounded-xl mb-3 flex items-center justify-center bg-secondary">
+                <feature.icon className="h-5 w-5 text-secondary-foreground" />
               </div>
-              <h3 className="font-semibold text-zinc-900 dark:text-white mb-1">
+              <h3 className="font-semibold text-card-foreground mb-1">
                 {feature.title}
               </h3>
-              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+              <p className="text-sm text-muted-foreground">
                 {feature.desc}
               </p>
             </motion.div>

@@ -19,16 +19,36 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en" className={inter.variable}>
-      <body className="font-sans antialiased bg-zinc-50 dark:bg-zinc-950">
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                const stored = localStorage.getItem('theme-storage');
+                const theme = stored ? JSON.parse(stored).state.theme : 'system';
+                const root = document.documentElement;
+                
+                if (theme === 'system') {
+                  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+                  root.classList.add(systemTheme);
+                } else {
+                  root.classList.add(theme);
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
+      <body className="font-sans antialiased bg-background text-foreground">
         {children}
         <Toaster 
           position="top-right"
           toastOptions={{
-            style: {
-              background: "white",
-              border: "1px solid #e4e4e7",
-              borderRadius: "12px",
+            classNames: {
+              toast: "bg-card border-border",
+              title: "text-card-foreground",
+              description: "text-muted-foreground",
             },
           }}
         />
