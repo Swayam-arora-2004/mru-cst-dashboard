@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { GraduationCap, Mail, Lock, ArrowLeft } from "lucide-react";
+import { GraduationCap, Mail, Lock, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +18,7 @@ export default function LoginPage() {
   const { login, isLoading, isAuthenticated, isHydrated, verifyToken } = useAuthStore();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
 
   useEffect(() => {
@@ -112,15 +113,28 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
               />
-              <Input
-                type="password"
-                label="Password"
-                placeholder="••••••••"
-                leftIcon={<Lock className="h-4 w-4" />}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                required
-              />
+              <div className="relative">
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  label="Password"
+                  placeholder="••••••••"
+                  leftIcon={<Lock className="h-4 w-4" />}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-9 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
 
               <div className="flex items-center justify-between text-sm">
                 <label className="flex items-center gap-2 text-zinc-600 dark:text-zinc-400">

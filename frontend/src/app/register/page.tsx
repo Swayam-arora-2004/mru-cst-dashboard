@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { motion } from "framer-motion";
-import { GraduationCap, Mail, Lock, User, Phone, ArrowLeft } from "lucide-react";
+import { GraduationCap, Mail, Lock, User, Phone, ArrowLeft, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,8 @@ export default function RegisterPage() {
     designation: "",
   });
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   useEffect(() => {
     verifyToken().then(() => {
@@ -148,26 +150,52 @@ export default function RegisterPage() {
                 required
               />
               <div className="grid grid-cols-2 gap-4">
-                <Input
-                  type="password"
-                  name="password"
-                  label="Password"
-                  placeholder="••••••••"
-                  leftIcon={<Lock className="h-4 w-4" />}
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
-                <Input
-                  type="password"
-                  name="confirmPassword"
-                  label="Confirm"
-                  placeholder="••••••••"
-                  leftIcon={<Lock className="h-4 w-4" />}
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                />
+                <div className="relative">
+                  <Input
+                    type={showPassword ? "text" : "password"}
+                    name="password"
+                    label="Password"
+                    placeholder="••••••••"
+                    leftIcon={<Lock className="h-4 w-4" />}
+                    value={formData.password}
+                    onChange={handleChange}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-9 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
+                <div className="relative">
+                  <Input
+                    type={showConfirmPassword ? "text" : "password"}
+                    name="confirmPassword"
+                    label="Confirm"
+                    placeholder="••••••••"
+                    leftIcon={<Lock className="h-4 w-4" />}
+                    value={formData.confirmPassword}
+                    onChange={handleChange}
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                    className="absolute right-3 top-9 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    {showConfirmPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
               </div>
               <Input
                 type="tel"
