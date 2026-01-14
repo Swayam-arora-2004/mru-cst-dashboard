@@ -13,6 +13,7 @@ import {
   Menu,
   X,
   GraduationCap,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
@@ -164,24 +165,30 @@ export function Sidebar() {
 
       {/* Logout Confirmation Dialog */}
       <Dialog open={showLogoutDialog} onClose={() => setShowLogoutDialog(false)}>
-        <DialogContent size="sm">
-          <DialogHeader>
-            <DialogTitle>Confirm Logout</DialogTitle>
-            <DialogDescription>
+        <DialogContent size="sm" className="overflow-hidden p-0">
+
+          {/* Content */}
+          <div className="px-6 pt-6 pb-4">
+            <DialogDescription className="text-center text-base text-muted-foreground">
               Are you sure you want to logout? You will need to login again to access the dashboard.
             </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
+          </div>
+
+          {/* Footer with Actions */}
+          <DialogFooter className="px-8 pb-6 gap-3">
             <Button
               variant="outline"
               onClick={() => setShowLogoutDialog(false)}
+              className="flex-1 h-11"
             >
               Cancel
             </Button>
             <Button
               variant="destructive"
               onClick={confirmLogout}
+              className="flex-1 h-11 bg-gradient-to-r from-red-500 to-red-600 hover:from-red-600 hover:to-red-700"
             >
+              <LogOut className="h-4 w-4 mr-2" />
               Logout
             </Button>
           </DialogFooter>
