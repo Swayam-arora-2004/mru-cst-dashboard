@@ -10,7 +10,7 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   title: "MRU Dashboard - University ERP",
-  description: "Modern University ERP Dashboard for managing students, courses, and faculty",
+  description: "University ERP Dashboard for managing students, courses, and faculty",
 };
 
 export default function RootLayout({

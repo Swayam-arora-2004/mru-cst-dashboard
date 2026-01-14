@@ -75,7 +75,7 @@ export default function Home() {
           MRU Dashboard
         </h1>
         <p className="text-lg md:text-xl text-muted-foreground mb-10 max-w-lg mx-auto leading-relaxed">
-          Modern University ERP System for managing students, courses, and academic operations
+          University ERP System for managing students, courses, and academic operations
         </p>
 
         {/* Features */}
@@ -133,7 +133,7 @@ export default function Home() {
         transition={{ delay: 0.8 }}
         className="absolute bottom-6 text-sm text-zinc-400"
       >
-        © 2026 MRU Dashboard. All rights reserved.
+        © 2026 Manav Rachna University. All rights reserved.
       </motion.p>
     </main>
   );
