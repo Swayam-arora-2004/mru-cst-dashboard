@@ -9,60 +9,57 @@ export const authenticate = async (
   res: Response,
   next: NextFunction
 ): Promise<void> => {
-  try {
-    const authHeader = req.headers.authorization;
-    
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Access denied. No token provided.',
-      };
-      res.status(401).json(response);
-      return;
-    }
+  const authHeader = req.headers.authorization;
 
-    const token = authHeader.split(' ')[1];
-    
-    try {
-      const decoded = jwt.verify(token, config.jwt.secret) as {
-        id: string;
-        email: string;
-        role: string;
-      };
-
-      // Verify user still exists in database
-      const supabase = getSupabaseAdminClient();
-      const { data: user, error } = await supabase
-        .from('teachers')
-        .select('id, email')
-        .eq('id', decoded.id)
-        .single();
-
-      if (error || !user) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'User not found or session expired.',
-        };
-        res.status(401).json(response);
-        return;
-      }
-
-      req.user = decoded;
-      next();
-    } catch (jwtError) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Invalid or expired token.',
-      };
-      res.status(401).json(response);
-      return;
-    }
-  } catch (error) {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
     const response: ApiResponse = {
       success: false,
-      error: 'Authentication error.',
+      error: 'Access denied. No token provided.',
     };
-    res.status(500).json(response);
+    res.status(401).json(response);
+    return;
+  }
+
+  const token = authHeader.split(' ')[1];
+
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret) as {
+      id: string;
+      email: string;
+      role: string;
+    };
+
+    // ✅ Always trust DB, not token
+    const supabase = getSupabaseAdminClient();
+    const { data: user, error } = await supabase
+      .from('teachers')
+      .select('id, email')
+      .eq('id', decoded.id)
+      .single();
+
+    if (error || !user) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'User not found or session expired.',
+      };
+      res.status(401).json(response);
+      return;
+    }
+
+    // ✅ FINAL, SAFE user assignment
+    req.user = {
+      id: user.id,
+      email: user.email,
+      role: decoded.role,
+    };
+
+    next();
+  } catch {
+    const response: ApiResponse = {
+      success: false,
+      error: 'Invalid or expired token.',
+    };
+    res.status(401).json(response);
   }
 };
 
