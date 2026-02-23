@@ -19,7 +19,7 @@ export const validate = (schema: ZodSchema) => {
       if (error instanceof ZodError) {
         const response: ApiResponse = {
           success: false,
-          error: 'Validation error',
+          error: 'Please enter a uppercase aphabet and a special character.',
           data: error.issues.map((e: ZodIssue) => ({
             field: e.path.join('.'),
             message: e.message,
