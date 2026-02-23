@@ -11,45 +11,56 @@ import logger from '../lib/logger';
 
 const router = Router();
 
-// Configure multer for image uploads
+/* =========================
+   MULTER CONFIG
+========================= */
+
 const storage = multer.memoryStorage();
 const upload = multer({
   storage,
   limits: { fileSize: config.upload.maxFileSize },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     if (config.upload.allowedFileTypes.includes(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF images are allowed.'));
+      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF allowed.'));
     }
   },
 });
 
-// Get all students with pagination and filters
+/* =========================
+   GET ALL STUDENTS (PAGINATED)
+========================= */
+
 router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const page = parseInt(req.query.page as string) || 1;
     const limit = parseInt(req.query.limit as string) || 20;
+    const offset = (page - 1) * limit;
+
     const search = req.query.search as string;
     const classId = req.query.class_id as string;
     const year = req.query.year as string;
     const departmentId = req.query.department_id as string;
 
-    const offset = (page - 1) * limit;
     const supabase = getSupabaseAdminClient();
 
     let query = supabase
       .from('students')
-      .select('*, classes(*), departments(*)', { count: 'exact' });
+      .select('*, classes(*), departments(*)', { count: 'exact' })
+      .eq('teacher_id', req.user!.id); // 🔑 ISOLATION
 
     if (search) {
-      query = query.or(`name.ilike.%${search}%,roll_number.ilike.%${search}%,email.ilike.%${search}%`);
+      query = query.or(
+        `name.ilike.%${search}%,roll_number.ilike.%${search}%,email.ilike.%${search}%`
+      );
     }
+
     if (classId) query = query.eq('class_id', classId);
     if (year) query = query.eq('year', parseInt(year));
     if (departmentId) query = query.eq('department_id', departmentId);
 
-    const { data: students, count, error } = await query
+    const { data, count, error } = await query
       .order('name')
       .range(offset, offset + limit - 1);
 
@@ -57,7 +68,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
 
     const response: PaginatedResponse<Student> = {
       success: true,
-      data: students || [],
+      data: data || [],
       pagination: {
         page,
         limit,
@@ -65,91 +76,73 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
         totalPages: Math.ceil((count || 0) / limit),
       },
     };
+
     res.status(200).json(response);
   } catch (error) {
     logger.error('Get students error:', error);
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to fetch students',
-    };
-    res.status(500).json(response);
+    res.status(500).json({ success: false, error: 'Failed to fetch students' });
   }
 });
 
-// Get single student by ID
-router.get('/:id', authenticate, validateId('id'), async (req: AuthRequest, res: Response): Promise<void> => {
+/* =========================
+   GET STUDENT BY ID
+========================= */
+
+router.get('/:id', authenticate, validateId('id'), async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
     const supabase = getSupabaseAdminClient();
 
-    const { data: student, error } = await supabase
+    const { data, error } = await supabase
       .from('students')
       .select('*, classes(*), departments(*)')
-      .eq('id', id)
+      .eq('id', req.params.id)
+      .eq('teacher_id', req.user!.id) // 🔑 ISOLATION
       .single();
 
-    if (error || !student) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Student not found',
-      };
-      res.status(404).json(response);
+    if (error || !data) {
+      res.status(404).json({ success: false, error: 'Student not found' });
       return;
     }
 
-    const response: ApiResponse<Student> = {
-      success: true,
-      data: student,
-    };
-    res.status(200).json(response);
+    res.status(200).json({ success: true, data });
   } catch (error) {
     logger.error('Get student error:', error);
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to fetch student',
-    };
-    res.status(500).json(response);
+    res.status(500).json({ success: false, error: 'Failed to fetch student' });
   }
 });
 
-// Search student by roll number
-router.get('/roll/:rollNumber', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+/* =========================
+   GET STUDENT BY ROLL NUMBER
+========================= */
+
+router.get('/roll/:rollNumber', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { rollNumber } = req.params;
     const supabase = getSupabaseAdminClient();
 
-    const { data: student, error } = await supabase
+    const { data, error } = await supabase
       .from('students')
       .select('*, classes(*), departments(*)')
-      .eq('roll_number', rollNumber)
+      .eq('roll_number', req.params.rollNumber)
+      .eq('teacher_id', req.user!.id) // 🔑 ISOLATION
       .single();
 
-    if (error || !student) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Student not found',
-      };
-      res.status(404).json(response);
+    if (error || !data) {
+      res.status(404).json({ success: false, error: 'Student not found' });
       return;
     }
 
-    const response: ApiResponse<Student> = {
-      success: true,
-      data: student,
-    };
-    res.status(200).json(response);
+    res.status(200).json({ success: true, data });
   } catch (error) {
     logger.error('Get student by roll error:', error);
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to fetch student',
-    };
-    res.status(500).json(response);
+    res.status(500).json({ success: false, error: 'Failed to fetch student' });
   }
 });
 
-// Create new student
-router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+/* =========================
+   CREATE STUDENT
+========================= */
+
+router.post('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const {
       roll_number,
@@ -164,33 +157,13 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
     } = req.body;
 
     if (!roll_number || !name || !email || !class_id || !year || !semester || !department_id) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Missing required fields',
-      };
-      res.status(400).json(response);
+      res.status(400).json({ success: false, error: 'Missing required fields' });
       return;
     }
 
     const supabase = getSupabaseAdminClient();
 
-    // Check for duplicate roll number
-    const { data: existing } = await supabase
-      .from('students')
-      .select('id')
-      .eq('roll_number', roll_number)
-      .single();
-
-    if (existing) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Roll number already exists',
-      };
-      res.status(400).json(response);
-      return;
-    }
-
-    const { data: student, error } = await supabase
+    const { data, error } = await supabase
       .from('students')
       .insert({
         roll_number,
@@ -202,160 +175,139 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
         semester,
         department_id,
         specialization,
+        teacher_id: req.user!.id, // 🔑 OWNER SET HERE
       })
       .select('*, classes(*), departments(*)')
       .single();
 
     if (error) throw error;
 
-    const response: ApiResponse<Student> = {
+    res.status(201).json({
       success: true,
-      data: student,
+      data,
       message: 'Student created successfully',
-    };
-    res.status(201).json(response);
+    });
   } catch (error) {
     logger.error('Create student error:', error);
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to create student',
-    };
-    res.status(500).json(response);
+    res.status(500).json({ success: false, error: 'Failed to create student' });
   }
 });
 
-// Update student
-router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+/* =========================
+   UPDATE STUDENT
+========================= */
+
+router.put('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
     const updateData = req.body;
-    
     delete updateData.id;
-    delete updateData.created_at;
+    delete updateData.teacher_id;
     updateData.updated_at = new Date().toISOString();
 
     const supabase = getSupabaseAdminClient();
 
-    const { data: student, error } = await supabase
+    const { data, error } = await supabase
       .from('students')
       .update(updateData)
-      .eq('id', id)
+      .eq('id', req.params.id)
+      .eq('teacher_id', req.user!.id) // 🔑 ISOLATION
       .select('*, classes(*), departments(*)')
       .single();
 
-    if (error) throw error;
+    if (error || !data) {
+      res.status(404).json({ success: false, error: 'Student not found' });
+      return;
+    }
 
-    const response: ApiResponse<Student> = {
+    res.status(200).json({
       success: true,
-      data: student,
+      data,
       message: 'Student updated successfully',
-    };
-    res.status(200).json(response);
+    });
   } catch (error) {
     logger.error('Update student error:', error);
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to update student',
-    };
-    res.status(500).json(response);
+    res.status(500).json({ success: false, error: 'Failed to update student' });
   }
 });
 
-// Upload student image
+/* =========================
+   UPLOAD STUDENT IMAGE
+========================= */
+
 router.post(
   '/:id/image',
   authenticate,
   upload.single('image'),
-  async (req: AuthRequest, res: Response): Promise<void> => {
+  async (req: AuthRequest, res: Response) => {
     try {
-      const { id } = req.params;
-      const file = req.file;
-
-      if (!file) {
-        const response: ApiResponse = {
-          success: false,
-          error: 'No image file provided',
-        };
-        res.status(400).json(response);
+      if (!req.file) {
+        res.status(400).json({ success: false, error: 'No image provided' });
         return;
       }
 
       const supabase = getSupabaseAdminClient();
 
-      // Resize and optimize image
-      const optimizedBuffer = await sharp(file.buffer)
+      const buffer = await sharp(req.file.buffer)
         .resize(400, 400, { fit: 'cover' })
         .jpeg({ quality: 80 })
         .toBuffer();
 
-      // Upload to Supabase Storage
-      const fileName = `students/${id}/${uuidv4()}.jpg`;
-      const { error: uploadError } = await supabase.storage
-        .from('images')
-        .upload(fileName, optimizedBuffer, {
-          contentType: 'image/jpeg',
-          upsert: true,
-        });
+      const path = `students/${req.params.id}/${uuidv4()}.jpg`;
 
-      if (uploadError) throw uploadError;
+      await supabase.storage.from('images').upload(path, buffer, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
 
-      // Get public URL
       const { data: { publicUrl } } = supabase.storage
         .from('images')
-        .getPublicUrl(fileName);
+        .getPublicUrl(path);
 
-      // Update student record
-      const { data: student, error } = await supabase
+      const { data, error } = await supabase
         .from('students')
         .update({ profile_image_url: publicUrl })
-        .eq('id', id)
+        .eq('id', req.params.id)
+        .eq('teacher_id', req.user!.id) // 🔑 ISOLATION
         .select()
         .single();
 
       if (error) throw error;
 
-      const response: ApiResponse = {
+      res.status(200).json({
         success: true,
-        data: { imageUrl: publicUrl, student },
+        data,
         message: 'Image uploaded successfully',
-      };
-      res.status(200).json(response);
+      });
     } catch (error) {
       logger.error('Upload image error:', error);
-      const response: ApiResponse = {
-        success: false,
-        error: 'Failed to upload image',
-      };
-      res.status(500).json(response);
+      res.status(500).json({ success: false, error: 'Failed to upload image' });
     }
   }
 );
 
-// Delete student
-router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+/* =========================
+   DELETE STUDENT
+========================= */
+
+router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { id } = req.params;
     const supabase = getSupabaseAdminClient();
 
     const { error } = await supabase
       .from('students')
       .delete()
-      .eq('id', id);
+      .eq('id', req.params.id)
+      .eq('teacher_id', req.user!.id); // 🔑 ISOLATION
 
     if (error) throw error;
 
-    const response: ApiResponse = {
+    res.status(200).json({
       success: true,
       message: 'Student deleted successfully',
-    };
-    res.status(200).json(response);
+    });
   } catch (error) {
     logger.error('Delete student error:', error);
-    const response: ApiResponse = {
-      success: false,
-      error: 'Failed to delete student',
-    };
-    res.status(500).json(response);
+    res.status(500).json({ success: false, error: 'Failed to delete student' });
   }
 });
 
