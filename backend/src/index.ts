@@ -18,6 +18,10 @@ import studentRoutes from './routes/students';
 import courseRoutes from './routes/courses';
 import faceRecognitionRoutes from './routes/faceRecognition';
 import generalRoutes from './routes/general';
+import documentRoutes from './routes/documents';
+import activitiesRoutes from './routes/activities';
+import evaluationsRoutes from './routes/evaluations';
+import { loadModels } from './lib/faceRecognition';
 
 // Validate environment variables
 validateConfig();
@@ -87,19 +91,7 @@ const generalLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Stricter rate limiting for auth routes (prevent brute force)
-const authLimiter = rateLimit({
-  windowMs: config.authRateLimit.windowMs,
-  max: config.authRateLimit.maxRequests,
-  message: {
-    success: false,
-    error: 'Too many authentication attempts, please try again later.',
-  },
-  standardHeaders: true,
-  legacyHeaders: false,
-  skipSuccessfulRequests: false,
-});
-
+// Stricter rate limiting moved to auth.ts //
 app.use('/api/', generalLimiter);
 
 // Body parsing
@@ -117,10 +109,13 @@ app.get('/health', (req, res) => {
 });
 
 // API routes with auth-specific rate limiting
-app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/auth', authRoutes);
 app.use('/api/students', studentRoutes);
 app.use('/api/courses', courseRoutes);
 app.use('/api/face', faceRecognitionRoutes);
+app.use('/api/documents', documentRoutes);
+app.use('/api/activities', activitiesRoutes);
+app.use('/api/evaluations', evaluationsRoutes);
 app.use('/api', generalRoutes);
 
 // Error handling
@@ -153,6 +148,12 @@ app.listen(PORT, () => {
   console.log(`🚀 Server running on port ${PORT}`);
   console.log('═══════════════════════════════════════');
   console.log('');
+
+  // Load face recognition models in the background (non-blocking)
+  loadModels().catch((err) => {
+    logger.warn('Face recognition models could not be loaded:', err.message);
+    logger.warn('Face recognition features will be unavailable until models are loaded.');
+  });
 });
 
 export default app;

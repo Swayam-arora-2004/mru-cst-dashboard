@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion } from "framer-motion";
 import {
   User,
@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/authStore";
@@ -36,7 +36,9 @@ export default function SettingsPage() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [isLoadingSystemInfo, setIsLoadingSystemInfo] = useState(false);
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const [departments, setDepartments] = useState<Array<{ id: string; code: string; name: string }>>([]);
 
   // Profile state
@@ -47,6 +49,7 @@ export default function SettingsPage() {
     phone: "",
     department: "",
     designation: "",
+    specialization: "",
   });
 
   // Security state
@@ -92,6 +95,7 @@ export default function SettingsPage() {
             phone: userData.phone || "",
             department: userData.department_id || "",
             designation: userData.designation || "",
+            specialization: userData.specialization || "",
           });
         }
       } catch (error) {
@@ -258,6 +262,37 @@ export default function SettingsPage() {
     }
   };
 
+  const handleAvatarChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Check file size (2MB)
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error("Image size must be less than 2MB");
+      return;
+    }
+
+    setIsUploadingAvatar(true);
+    const formData = new FormData();
+    formData.append("avatar", file);
+
+    try {
+      const response = await authApi.uploadAvatar(formData);
+      if (response.success && response.data) {
+        setUser(response.data.user);
+        toast.success("Avatar updated successfully");
+      } else {
+        toast.error(response.error || "Failed to upload avatar");
+      }
+    } catch (error: any) {
+      toast.error(error.message || "Failed to upload avatar");
+    } finally {
+      setIsUploadingAvatar(false);
+      // Reset input
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  };
+
   const tabs = [
     { id: "profile" as const, label: "Profile", icon: User },
     { id: "security" as const, label: "Security", icon: Shield },
@@ -316,14 +351,30 @@ export default function SettingsPage() {
                   <CardContent className="space-y-6">
                     {/* Avatar */}
                     <div className="flex items-center gap-6">
-                      <Avatar
-                        alt={`${profileData.firstName} ${profileData.lastName}`}
-                        fallback={`${profileData.firstName[0] || "U"}${profileData.lastName[0] || ""}`}
-                        size="xl"
-                        className="w-20 h-20"
-                      />
+                      <Avatar size="xl" className="w-20 h-20 border-2 border-border">
+                        <AvatarImage 
+                          src={user?.profile_image_url || undefined} 
+                          alt={user?.name || "User"} 
+                        />
+                        <AvatarFallback className="text-xl bg-zinc-100 dark:bg-zinc-800">
+                          {profileData.firstName?.[0] || user?.name?.[0] || "U"}
+                          {profileData.lastName?.[0] || ""}
+                        </AvatarFallback>
+                      </Avatar>
                       <div>
-                        <Button variant="outline" size="sm">
+                        <input
+                          type="file"
+                          ref={fileInputRef}
+                          className="hidden"
+                          accept="image/*"
+                          onChange={handleAvatarChange}
+                        />
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          onClick={() => fileInputRef.current?.click()}
+                          isLoading={isUploadingAvatar}
+                        >
                           Change Avatar
                         </Button>
                         <p className="text-xs text-zinc-500 mt-2">
@@ -379,6 +430,8 @@ export default function SettingsPage() {
                           phone: e.target.value,
                         }))
                       }
+                      disabled
+                      hint="Phone number is set securely by administration"
                     />
                     <Select
                       label="Department"
@@ -396,16 +449,16 @@ export default function SettingsPage() {
                           department: e.target.value,
                         }))
                       }
+                      disabled
                     />
                     <Select
                       label="Designation"
                       options={[
                         { value: "Professor", label: "Professor" },
-                        { value: "Associate Professor", label: "Associate Professor" },
-                        { value: "Assistant Professor", label: "Assistant Professor" },
-                        { value: "Lecturer", label: "Lecturer" },
                         { value: "Head of Department", label: "Head of Department" },
-                        { value: "Teacher", label: "Teacher" },
+                        { value: "Associate Teacher", label: "Associate Teacher" },
+                        { value: "Assistant Teacher", label: "Assistant Teacher" },
+                        { value: "Lab Coordinator", label: "Lab Coordinator" },
                       ]}
                       value={profileData.designation}
                       onChange={(e) =>
@@ -414,7 +467,29 @@ export default function SettingsPage() {
                           designation: e.target.value,
                         }))
                       }
+                      disabled
                     />
+
+                    {/* Specialization — read-only display */}
+                    {profileData.specialization && (
+                      <div>
+                        <label className="block text-sm font-medium text-foreground mb-1.5">
+                          Specialization
+                        </label>
+                        <div className="flex items-center gap-2 px-4 py-3 rounded-xl border border-border bg-muted/40">
+                          <GraduationCap className="h-4 w-4 text-primary flex-shrink-0" />
+                          <span className="text-sm font-medium text-foreground">
+                            {profileData.specialization}
+                          </span>
+                          <span className="ml-auto text-xs text-muted-foreground bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium">
+                            Enrolled
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Specialization is set during account creation and cannot be changed here.
+                        </p>
+                      </div>
+                    )}
 
                     <div className="flex justify-end">
                       <Button onClick={handleProfileSave} isLoading={isLoading}>
@@ -804,51 +879,6 @@ export default function SettingsPage() {
                           </div>
                         </div>
                       </>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Quick Stats</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    {isLoadingSystemInfo ? (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {[1, 2, 3, 4].map((i) => (
-                          <div key={i} className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                            <Skeleton className="h-8 w-16 mx-auto mb-2" />
-                            <Skeleton className="h-4 w-24 mx-auto" />
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                            {systemInfo?.stats.students || 0}
-                          </p>
-                          <p className="text-sm text-zinc-500">Total Students</p>
-                        </div>
-                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                            {systemInfo?.stats.courses || 0}
-                          </p>
-                          <p className="text-sm text-zinc-500">Courses</p>
-                        </div>
-                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                            {systemInfo?.stats.departments || 0}
-                          </p>
-                          <p className="text-sm text-zinc-500">Departments</p>
-                        </div>
-                        <div className="text-center p-4 rounded-lg bg-zinc-50 dark:bg-zinc-800">
-                          <p className="text-2xl font-bold text-zinc-900 dark:text-white">
-                            {systemInfo?.stats.classes || 0}
-                          </p>
-                          <p className="text-sm text-zinc-500">Classes</p>
-                        </div>
-                      </div>
                     )}
                   </CardContent>
                 </Card>

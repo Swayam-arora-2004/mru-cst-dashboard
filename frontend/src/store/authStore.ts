@@ -18,6 +18,7 @@ interface AuthState {
     phone?: string;
     department_id?: string;
     designation?: string;
+    specialization?: string;
   }) => Promise<void>;
   logout: () => void;
   verifyToken: () => Promise<void>;

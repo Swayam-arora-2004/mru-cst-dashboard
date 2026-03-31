@@ -1,24 +1,65 @@
 import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt, { SignOptions } from 'jsonwebtoken';
+import multer from 'multer';
+import sharp from 'sharp';
+import { v4 as uuidv4 } from 'uuid';
 import { config } from '../config';
 import { getSupabaseAdminClient } from '../lib/supabase';
 import { ApiResponse, AuthRequest } from '../types';
 import { validate } from '../middleware/validate';
-import { registerSchema, loginSchema, updateProfileSchema, changePasswordSchema, updatePreferencesSchema } from '../schemas';
+import { 
+  registerSchema, 
+  loginSchema, 
+  updateProfileSchema, 
+  changePasswordSchema, 
+  updatePreferencesSchema 
+} from '../schemas';
 import { asyncHandler } from '../middleware/asyncHandler';
 import { trackLoginAttempts, recordLoginAttempt } from '../middleware/security';
 import { authenticate } from '../middleware/auth';
 import logger from '../lib/logger';
+import rateLimit from 'express-rate-limit';
 
 const router = Router();
+
+// Stricter rate limiting for auth routes (prevent brute force)
+const authLimiter = rateLimit({
+  windowMs: config.authRateLimit.windowMs,
+  max: config.authRateLimit.maxRequests,
+  message: {
+    success: false,
+    error: 'Too many authentication attempts, please try again later.',
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false,
+});
+
+/* =========================
+   MULTER CONFIG
+========================= */
+
+const storage = multer.memoryStorage();
+const upload = multer({
+  storage,
+  limits: { fileSize: config.upload.maxFileSize },
+  fileFilter: (_req, file, cb) => {
+    if (config.upload.allowedFileTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF allowed.'));
+    }
+  },
+});
 
 // Register new teacher
 router.post(
   '/register',
+  authLimiter,
   validate(registerSchema),
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
-    const { name, email, password, phone, department_id, designation } = req.body;
+    const { name, email, password, phone, department_id, designation, specialization } = req.body;
 
     const supabase = getSupabaseAdminClient();
 
@@ -52,8 +93,9 @@ router.post(
         phone,
         department_id,
         designation: designation || 'Teacher',
+        specialization,
       })
-      .select('id, name, email, designation')
+      .select('id, name, email, designation, profile_image_url')
       .single();
 
     if (error) {
@@ -85,6 +127,7 @@ router.post(
 // Login
 router.post(
   '/login',
+  authLimiter,
   trackLoginAttempts(config.security.maxLoginAttempts, config.security.lockoutDuration),
   validate(loginSchema),
   asyncHandler(async (req: Request, res: Response): Promise<void> => {
@@ -96,7 +139,7 @@ router.post(
     // Find user
     const { data: user, error } = await supabase
       .from('teachers')
-      .select('id, name, email, password, designation, department_id')
+      .select('id, name, email, password, phone, designation, department_id, specialization, profile_image_url')
       .eq('email', email)
       .single();
 
@@ -172,7 +215,7 @@ router.get(
       const supabase = getSupabaseAdminClient();
       const { data: user, error } = await supabase
         .from('teachers')
-        .select('id, name, email, designation, department_id')
+        .select('id, name, email, phone, designation, department_id, specialization, profile_image_url')
         .eq('id', decoded.id)
         .single();
 
@@ -208,7 +251,7 @@ router.get(
     const supabase = getSupabaseAdminClient();
     const { data: user, error } = await supabase
       .from('teachers')
-      .select('id, name, email, phone, designation, department_id, created_at, updated_at')
+      .select('id, name, email, phone, designation, department_id, specialization, profile_image_url, created_at, updated_at')
       .eq('id', req.user!.id)
       .single();
 
@@ -248,7 +291,7 @@ router.put(
       .from('teachers')
       .update(updateData)
       .eq('id', req.user!.id)
-      .select('id, name, email, phone, designation, department_id')
+      .select('id, name, email, phone, designation, department_id, profile_image_url')
       .single();
 
     if (error) {
@@ -414,6 +457,70 @@ router.put(
       success: true,
       data: { preferences: updatedPreferences },
       message: 'Preferences updated successfully',
+    };
+    res.status(200).json(response);
+  })
+);
+
+// Upload avatar
+router.post(
+  '/avatar',
+  authenticate,
+  upload.single('avatar'),
+  asyncHandler(async (req: AuthRequest, res: Response): Promise<void> => {
+    if (!req.file) {
+      const response: ApiResponse = {
+        success: false,
+        error: 'No image provided',
+      };
+      res.status(400).json(response);
+      return;
+    }
+
+    const supabase = getSupabaseAdminClient();
+
+    // Resize and optimize image
+    const buffer = await sharp(req.file.buffer)
+      .rotate()
+      .resize(400, 400, { fit: 'cover' })
+      .jpeg({ quality: 80 })
+      .toBuffer();
+
+    const path = `avatars/${req.user!.id}/${uuidv4()}.jpg`;
+
+    // Upload to Supabase Storage
+    const { error: uploadError } = await supabase.storage
+      .from('images')
+      .upload(path, buffer, {
+        contentType: 'image/jpeg',
+        upsert: true,
+      });
+
+    if (uploadError) {
+      throw uploadError;
+    }
+
+    // Get public URL
+    const { data: { publicUrl } } = supabase.storage
+      .from('images')
+      .getPublicUrl(path);
+
+    // Update teacher profile
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('teachers')
+      .update({ profile_image_url: publicUrl })
+      .eq('id', req.user!.id)
+      .select('id, name, email, phone, designation, department_id, profile_image_url')
+      .single();
+
+    if (updateError) {
+      throw updateError;
+    }
+
+    const response: ApiResponse = {
+      success: true,
+      data: { user: updatedUser },
+      message: 'Avatar updated successfully',
     };
     res.status(200).json(response);
   })

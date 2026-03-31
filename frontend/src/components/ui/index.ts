@@ -12,13 +12,22 @@ export type { ButtonProps } from "./button";
 export { Input, inputVariants } from "./input";
 export type { InputProps } from "./input";
 
+export { Label } from "./label";
+export type { LabelProps } from "./label";
+
 export { Textarea, textareaVariants } from "./textarea";
 export type { TextareaProps } from "./textarea";
 
 export { Checkbox } from "./checkbox";
 export type { CheckboxProps } from "./checkbox";
 
-export { Select } from "./select";
+export { 
+  Select, 
+  SelectTrigger, 
+  SelectValue, 
+  SelectContent, 
+  SelectItem 
+} from "./select";
 export type { SelectProps } from "./select";
 
 // Layout Components
@@ -75,7 +84,7 @@ export {
 export type { SkeletonProps } from "./skeleton";
 
 // Data Display
-export { Avatar } from "./avatar";
+export { Avatar, AvatarImage, AvatarFallback } from "./avatar";
 export type { AvatarProps } from "./avatar";
 
 export { EmptyState } from "./empty-state";

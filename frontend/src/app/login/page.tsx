@@ -19,7 +19,19 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
+  const [rememberMe, setRememberMe] = useState(false);
   const [isChecking, setIsChecking] = useState(true);
+
+  // Check for remembered email on mount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const rememberedEmail = localStorage.getItem("rememberedEmail");
+      if (rememberedEmail) {
+        setEmail(rememberedEmail);
+        setRememberMe(true);
+      }
+    }
+  }, []);
 
   useEffect(() => {
     if (!isHydrated) return;
@@ -53,6 +65,14 @@ export default function LoginPage() {
 
     try {
       await login(email, password);
+      
+      // Handle Remember Me
+      if (rememberMe) {
+        localStorage.setItem("rememberedEmail", email);
+      } else {
+        localStorage.removeItem("rememberedEmail");
+      }
+
       toast.success("Login successful!");
       router.push("/dashboard");
     } catch (error) {
@@ -141,6 +161,8 @@ export default function LoginPage() {
                   <input
                     type="checkbox"
                     className="rounded border-border"
+                    checked={rememberMe}
+                    onChange={(e) => setRememberMe(e.target.checked)}
                   />
                   Remember me
                 </label>

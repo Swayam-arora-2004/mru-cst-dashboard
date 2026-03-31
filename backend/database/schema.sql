@@ -32,6 +32,7 @@ CREATE TABLE IF NOT EXISTS teachers (
   phone VARCHAR(20),
   department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
   designation VARCHAR(100) DEFAULT 'Teacher',
+  specialization VARCHAR(255),
   profile_image_url TEXT,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
@@ -167,11 +168,13 @@ FOR DELETE USING (bucket_id = 'images');
 
 -- Insert sample departments
 INSERT INTO departments (code, name) VALUES
-  ('CSE', 'Computer Science Engineering'),
-  ('CSH', 'Computer Science & Engineering (Specialization)'),
-  ('ECE', 'Electronics & Communication Engineering'),
-  ('ECH', 'Electronics & Communication (Specialization)'),
+  ('CSE', 'Computer Science and Engineering'),
+  ('CSH', 'Computer Science and Engineering (Specialization)'),
+  ('ECE', 'Electronics and Communication Engineering'),
+  ('ECH', 'Electronics and Communication Engineering (Specialization)'),
   ('MEH', 'Mechanical Engineering'),
+  ('EEE', 'Electronic and Electrical Engineering'),
+  ('EEH', 'Electronic and Electrical Engineering (Specialization)'),
   ('ECS', 'Environmental & Computer Science'),
   ('CSS', 'Computer Science & Sustainability'),
   ('EDH', 'Education & Humanities')

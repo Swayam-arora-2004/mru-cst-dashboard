@@ -16,6 +16,7 @@ export const registerSchema = z.object({
     phone: z.string().optional(),
     department_id: z.string().uuid().optional(),
     designation: z.string().optional(),
+    specialization: z.string().optional(),
   }),
 });
 

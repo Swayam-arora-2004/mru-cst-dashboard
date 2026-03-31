@@ -202,27 +202,28 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response): Prom
   try {
     const supabase = getSupabaseAdminClient();
 
-    // Get counts
+    // Get counts strictly for current teacher
     const [studentsResult, coursesResult, departmentsResult, classesResult] = await Promise.all([
-      supabase.from('students').select('id', { count: 'exact', head: true }),
+      supabase.from('students').select('id', { count: 'exact', head: true }).eq('teacher_id', req.user!.id),
       supabase.from('courses').select('id', { count: 'exact', head: true }),
       supabase.from('departments').select('id', { count: 'exact', head: true }),
       supabase.from('classes').select('id', { count: 'exact', head: true }),
     ]);
 
-    // Get recent students
+    // Get recent students specifically added by current teacher
     const { data: recentStudents } = await supabase
       .from('students')
-      .select('id, name, roll_number, created_at')
+      .select('id, name, roll_number, profile_image_url, created_at')
+      .eq('teacher_id', req.user!.id)
       .order('created_at', { ascending: false })
-      .limit(5);
+      .limit(6);
 
-    // Get recent courses
+    // Get recent courses (assuming user wants general metrics for now)
     const { data: recentCourses } = await supabase
       .from('courses')
       .select('id, code, name, created_at')
       .order('created_at', { ascending: false })
-      .limit(5);
+      .limit(6);
 
     const response: ApiResponse = {
       success: true,

@@ -5,6 +5,7 @@ export interface AuthRequest extends Request {
     id: string;
     email: string;
     role: string;
+    name: string;
   };
 }
 
@@ -62,6 +63,8 @@ export interface Course {
   type: 'lecture' | 'tutorial' | 'lab' | 'mooc' | 'elective';
   department_id: string;
   semester: number;
+  year: number;
+  class_id?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;

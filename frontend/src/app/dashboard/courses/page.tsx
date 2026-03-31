@@ -32,6 +32,7 @@ import {
   Course,
   Department,
   CourseCodeSuggestion,
+  ClassInfo,
 } from "@/lib/api";
 import { debounce } from "@/lib/utils";
 import { getSemesterOptions, getYearForSemester } from "@/lib/yearSemesterUtils";
@@ -44,9 +45,201 @@ const courseTypeColors: Record<string, "default" | "primary" | "success" | "warn
   elective: "default",
 };
 
+// Moved outside to prevent focus loss issues
+const courseTypes = [
+  { value: "lecture", label: "Lecture" },
+  { value: "tutorial", label: "Tutorial" },
+  { value: "lab", label: "Lab" },
+  { value: "mooc", label: "MOOC" },
+  { value: "elective", label: "Elective" },
+];
+
+interface CourseFormProps {
+  formData: any;
+  setFormData: (data: any) => void;
+  classes: ClassInfo[];
+  departments: Department[];
+  onSubmit: (e: React.FormEvent) => void;
+  submitLabel: string;
+  onCancel: () => void;
+  validateCode: (code: string) => void;
+  isValidating: boolean;
+  codeValidation: any;
+  isSubmitting: boolean;
+}
+
+const CourseForm = ({
+  formData,
+  setFormData,
+  classes,
+  departments,
+  onSubmit,
+  submitLabel,
+  onCancel,
+  validateCode,
+  isValidating,
+  codeValidation,
+  isSubmitting,
+}: CourseFormProps) => (
+  <form onSubmit={onSubmit} className="space-y-4">
+    <div className="relative">
+      <Input
+        label="Course Code"
+        placeholder="e.g., CSH422B-T"
+        value={formData.code}
+        onChange={(e) => {
+          const value = e.target.value.toUpperCase();
+          setFormData((prev: any) => ({ ...prev, code: value }));
+          validateCode(value);
+        }}
+        required
+      />
+      {isValidating && (
+        <div className="absolute right-3 top-9">
+          <Spinner size="sm" />
+        </div>
+      )}
+      {codeValidation && (
+        <div className="mt-2 flex items-start gap-2">
+          {codeValidation.isDuplicate ? (
+            <>
+              <AlertCircle className="h-4 w-4 text-red-500 mt-0.5" />
+              <div>
+                <p className="text-sm text-red-500">This code is already in use</p>
+                {codeValidation.suggestions.length > 0 && (
+                  <div className="mt-1">
+                    <p className="text-xs text-muted-foreground">Try these alternatives:</p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {codeValidation.suggestions.map((s: string) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() =>
+                            setFormData((prev: any) => ({ ...prev, code: s }))
+                          }
+                          className="px-2 py-0.5 text-xs bg-muted rounded-md hover:bg-muted/80 transition-colors"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </>
+          ) : codeValidation.isValid ? (
+            <>
+              <Check className="h-4 w-4 text-emerald-500 mt-0.5" />
+              <p className="text-sm text-emerald-500">Code is available</p>
+            </>
+          ) : (
+            <>
+              <X className="h-4 w-4 text-amber-500 mt-0.5" />
+              <p className="text-sm text-amber-500">Invalid code format</p>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+    <Input
+      label="Course Name"
+      placeholder="e.g., Virtualization - Containers/Cloud"
+      value={formData.name}
+      onChange={(e) => setFormData((prev: any) => ({ ...prev, name: e.target.value }))}
+      required
+    />
+    <div className="grid grid-cols-2 gap-4">
+      <Select
+        label="Type"
+        placeholder="Select type"
+        options={courseTypes}
+        value={formData.type}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: any) => ({ ...prev, type: e.target.value }))}
+        required
+      />
+      <Input
+        type="number"
+        label="Credits"
+        placeholder="3"
+        min="1"
+        max="6"
+        value={formData.credits}
+        onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
+          setFormData((prev: any) => ({ ...prev, credits: e.target.value }))
+        }
+        required
+      />
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      <Select
+        label="Year"
+        placeholder="Select year"
+        options={[
+          { value: "1", label: "1st Year" },
+          { value: "2", label: "2nd Year" },
+          { value: "3", label: "3rd Year" },
+          { value: "4", label: "4th Year" },
+        ]}
+        value={formData.year}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: any) => ({ ...prev, year: e.target.value }))}
+        required
+      />
+      <Select
+        label="Class"
+        placeholder="Select class"
+        options={classes.map((c) => ({ value: c.id, label: c.name }))}
+        value={formData.class_id}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: any) => ({ ...prev, class_id: e.target.value }))}
+      />
+    </div>
+    <div className="grid grid-cols-2 gap-4">
+      <Select
+        label="Department"
+        placeholder="Select department"
+        options={departments.map((d) => ({ value: d.id, label: d.name }))}
+        value={formData.department_id}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+          setFormData((prev: any) => ({ ...prev, department_id: e.target.value }))
+        }
+        required
+      />
+      <Select
+        label="Semester"
+        placeholder="Select semester"
+        options={Array.from({ length: 12 }, (_, i) => ({
+          value: (i + 1).toString(),
+          label: `Semester ${i + 1}`,
+        }))}
+        value={formData.semester}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+          setFormData((prev: any) => ({ ...prev, semester: e.target.value }))
+        }
+        required
+      />
+    </div>
+    <div className="flex justify-end gap-3 pt-4">
+      <Button
+        type="button"
+        variant="outline"
+        onClick={onCancel}
+      >
+        Cancel
+      </Button>
+      <Button
+        type="submit"
+        isLoading={isSubmitting}
+        disabled={codeValidation?.isDuplicate}
+      >
+        {submitLabel}
+      </Button>
+    </div>
+  </form>
+);
+
 export default function CoursesPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [departments, setDepartments] = useState<Department[]>([]);
+  const [classes, setClasses] = useState<ClassInfo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [pagination, setPagination] = useState({
     page: 1,
@@ -72,11 +265,12 @@ export default function CoursesPage() {
   const [formData, setFormData] = useState({
     code: "",
     name: "",
-    description: "",
     credits: "3",
     type: "",
     department_id: "",
     semester: "",
+    year: "",
+    class_id: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -138,6 +332,9 @@ export default function CoursesPage() {
     generalApi.getDepartments().then((res) => {
       if (res.success && res.data) setDepartments(res.data);
     });
+    generalApi.getClasses().then((res) => {
+      if (res.success && res.data) setClasses(res.data);
+    });
   }, []);
 
   // Validate course code
@@ -167,15 +364,33 @@ export default function CoursesPage() {
     e.preventDefault();
     setIsSubmitting(true);
 
+    // Validation
+    if (!formData.code || !formData.name || !formData.type || !formData.department_id || !formData.semester || !formData.year) {
+      toast.error("Please fill in all required fields including Year, Semester and Department");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const semester = parseInt(formData.semester);
+    const year = parseInt(formData.year);
+    const credits = parseInt(formData.credits);
+
+    if (isNaN(semester) || isNaN(year) || isNaN(credits)) {
+      toast.error("Year, Semester, and Credits must be valid numbers");
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const response = await coursesApi.create({
         code: formData.code.toUpperCase(),
         name: formData.name,
-        description: formData.description || undefined,
-        credits: parseInt(formData.credits),
+        credits,
         type: formData.type as Course["type"],
         department_id: formData.department_id,
-        semester: parseInt(formData.semester),
+        semester,
+        year,
+        class_id: formData.class_id || undefined,
       });
 
       if (response.success) {
@@ -196,15 +411,33 @@ export default function CoursesPage() {
     if (!selectedCourse) return;
     setIsSubmitting(true);
 
+    // Validation
+    if (!formData.code || !formData.name || !formData.type || !formData.department_id || !formData.semester || !formData.year) {
+      toast.error("Please fill in all required fields including Year, Semester and Department");
+      setIsSubmitting(false);
+      return;
+    }
+
+    const semester = parseInt(formData.semester);
+    const year = parseInt(formData.year);
+    const credits = parseInt(formData.credits);
+
+    if (isNaN(semester) || isNaN(year) || isNaN(credits)) {
+      toast.error("Year, Semester, and Credits must be valid numbers");
+      setIsSubmitting(false);
+      return;
+    }
+
     try {
       const response = await coursesApi.update(selectedCourse.id, {
         code: formData.code.toUpperCase(),
         name: formData.name,
-        description: formData.description || undefined,
-        credits: parseInt(formData.credits),
+        credits,
         type: formData.type as Course["type"],
         department_id: formData.department_id,
-        semester: parseInt(formData.semester),
+        semester,
+        year,
+        class_id: formData.class_id || undefined,
       });
 
       if (response.success) {
@@ -283,11 +516,12 @@ export default function CoursesPage() {
     setFormData({
       code: "",
       name: "",
-      description: "",
       credits: "3",
       type: "",
       department_id: "",
       semester: "",
+      year: "",
+      class_id: "",
     });
     setSelectedCourse(null);
     setCodeValidation(null);
@@ -298,172 +532,24 @@ export default function CoursesPage() {
     setFormData({
       code: course.code,
       name: course.name,
-      description: course.description || "",
       credits: course.credits.toString(),
       type: course.type,
       department_id: course.department_id,
       semester: course.semester.toString(),
+      year: course.year?.toString() || "",
+      class_id: course.class_id || "",
     });
     setIsEditModalOpen(true);
   };
 
-  const courseTypes = [
-    { value: "lecture", label: "Lecture" },
-    { value: "tutorial", label: "Tutorial" },
-    { value: "lab", label: "Lab" },
-    { value: "mooc", label: "MOOC" },
-    { value: "elective", label: "Elective" },
-  ];
-
-  const CourseForm = ({
-    onSubmit,
-    submitLabel,
-  }: {
-    onSubmit: (e: React.FormEvent) => void;
-    submitLabel: string;
-  }) => (
-    <form onSubmit={onSubmit} className="space-y-4">
-      <div className="relative">
-        <Input
-          label="Course Code"
-          placeholder="e.g., CSH422B-T"
-          value={formData.code}
-          onChange={(e) => {
-            const value = e.target.value.toUpperCase();
-            setFormData((prev) => ({ ...prev, code: value }));
-            validateCode(value);
-          }}
-          required
-        />
-        {isValidating && (
-          <div className="absolute right-3 top-9">
-            <Spinner size="sm" />
-          </div>
-        )}
-        {codeValidation && (
-          <div className="mt-2 flex items-start gap-2">
-            {codeValidation.isDuplicate ? (
-              <>
-                <AlertCircle className="h-4 w-4 text-red-500 mt-0.5" />
-                <div>
-                  <p className="text-sm text-red-500">This code is already in use</p>
-                  {codeValidation.suggestions.length > 0 && (
-                    <div className="mt-1">
-                      <p className="text-xs text-muted-foreground">Try these alternatives:</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {codeValidation.suggestions.map((s) => (
-                          <button
-                            key={s}
-                            type="button"
-                            onClick={() =>
-                              setFormData((prev) => ({ ...prev, code: s }))
-                            }
-                            className="px-2 py-0.5 text-xs bg-muted rounded-md hover:bg-muted/80 transition-colors"
-                          >
-                            {s}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </>
-            ) : codeValidation.isValid ? (
-              <>
-                <Check className="h-4 w-4 text-emerald-500 mt-0.5" />
-                <p className="text-sm text-emerald-500">Code is available</p>
-              </>
-            ) : (
-              <>
-                <X className="h-4 w-4 text-amber-500 mt-0.5" />
-                <p className="text-sm text-amber-500">Invalid code format</p>
-              </>
-            )}
-          </div>
-        )}
-      </div>
-      <Input
-        label="Course Name"
-        placeholder="e.g., Virtualization - Containers/Cloud"
-        value={formData.name}
-        onChange={(e) => setFormData((prev) => ({ ...prev, name: e.target.value }))}
-        required
-      />
-      <Input
-        label="Description (Optional)"
-        placeholder="Brief description of the course"
-        value={formData.description}
-        onChange={(e) =>
-          setFormData((prev) => ({ ...prev, description: e.target.value }))
-        }
-      />
-      <div className="grid grid-cols-2 gap-4">
-        <Select
-          label="Type"
-          placeholder="Select type"
-          options={courseTypes}
-          value={formData.type}
-          onChange={(e) => setFormData((prev) => ({ ...prev, type: e.target.value }))}
-          required
-        />
-        <Input
-          type="number"
-          label="Credits"
-          placeholder="3"
-          min="1"
-          max="6"
-          value={formData.credits}
-          onChange={(e) =>
-            setFormData((prev) => ({ ...prev, credits: e.target.value }))
-          }
-          required
-        />
-      </div>
-      <Select
-        label="Department"
-        placeholder="Select department"
-        options={departments.map((d) => ({ value: d.id, label: d.name }))}
-        value={formData.department_id}
-        onChange={(e) =>
-          setFormData((prev) => ({ ...prev, department_id: e.target.value }))
-        }
-        required
-      />
-      <Select
-        label="Semester"
-        placeholder="Select semester"
-        options={Array.from({ length: 12 }, (_, i) => ({
-          value: (i + 1).toString(),
-          label: `Semester ${i + 1}`,
-        }))}
-        value={formData.semester}
-        onChange={(e) =>
-          setFormData((prev) => ({ ...prev, semester: e.target.value }))
-        }
-        required
-      />
-      <div className="flex justify-end gap-3 pt-4">
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setIsAddModalOpen(false);
-            setIsEditModalOpen(false);
-            resetForm();
-          }}
-        >
-          Cancel
-        </Button>
-        <Button
-          type="submit"
-          isLoading={isSubmitting}
-          disabled={codeValidation?.isDuplicate}
-        >
-          {submitLabel}
-        </Button>
-      </div>
-    </form>
-  );
+// Moved outside to prevent focus loss issues
+const courseTypes = [
+  { value: "lecture", label: "Lecture" },
+  { value: "tutorial", label: "Tutorial" },
+  { value: "lab", label: "Lab" },
+  { value: "mooc", label: "MOOC" },
+  { value: "elective", label: "Elective" },
+];
 
   return (
     <div className="min-h-screen">
@@ -690,7 +776,22 @@ export default function CoursesPage() {
         description="Enter the course information below"
         size="lg"
       >
-        <CourseForm onSubmit={handleAddCourse} submitLabel="Add Course" />
+        <CourseForm 
+          formData={formData}
+          setFormData={setFormData}
+          classes={classes}
+          departments={departments}
+          onSubmit={handleAddCourse} 
+          submitLabel="Add Course" 
+          onCancel={() => {
+            setIsAddModalOpen(false);
+            resetForm();
+          }}
+          validateCode={validateCode}
+          isValidating={isValidating}
+          codeValidation={codeValidation}
+          isSubmitting={isSubmitting}
+        />
       </Modal>
 
       {/* Edit Course Modal */}
@@ -704,7 +805,22 @@ export default function CoursesPage() {
         description="Update the course information"
         size="lg"
       >
-        <CourseForm onSubmit={handleEditCourse} submitLabel="Save Changes" />
+        <CourseForm 
+          formData={formData}
+          setFormData={setFormData}
+          classes={classes}
+          departments={departments}
+          onSubmit={handleEditCourse} 
+          submitLabel="Save Changes" 
+          onCancel={() => {
+            setIsEditModalOpen(false);
+            resetForm();
+          }}
+          validateCode={validateCode}
+          isValidating={isValidating}
+          codeValidation={codeValidation}
+          isSubmitting={isSubmitting}
+        />
       </Modal>
 
       {/* Generate Code Modal */}

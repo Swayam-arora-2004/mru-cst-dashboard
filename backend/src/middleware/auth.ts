@@ -33,7 +33,7 @@ export const authenticate = async (
     const supabase = getSupabaseAdminClient();
     const { data: user, error } = await supabase
       .from('teachers')
-      .select('id, email')
+      .select('id, email, name')
       .eq('id', decoded.id)
       .single();
 
@@ -51,6 +51,7 @@ export const authenticate = async (
       id: user.id,
       email: user.email,
       role: decoded.role,
+      name: user.name || '',
     };
 
     next();

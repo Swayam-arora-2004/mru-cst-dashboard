@@ -14,10 +14,14 @@ import {
   X,
   GraduationCap,
   AlertTriangle,
+  FileText,
+  ClipboardCheck,
+  FileCheck,
+  Calendar as CalendarIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/store/authStore";
-import { Avatar } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { useState } from "react";
 import {
   Dialog,
@@ -33,6 +37,10 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Students", href: "/dashboard/students", icon: Users },
   { name: "Courses", href: "/dashboard/courses", icon: BookOpen },
+  { name: "Documents", href: "/dashboard/documents", icon: FileText },
+  { name: "Activities", href: "/dashboard/activities", icon: ClipboardCheck },
+  { name: "Attendance History", href: "/dashboard/attendance/history", icon: CalendarIcon },
+  { name: "Submissions", href: "/dashboard/submissions", icon: FileCheck },
   { name: "Face Recognition", href: "/dashboard/face-recognition", icon: ScanFace },
   { name: "Settings", href: "/dashboard/settings", icon: Settings },
 ];
@@ -98,7 +106,12 @@ export function Sidebar() {
       {/* User section */}
       <div className="p-4 border-t border-border">
         <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-secondary/50">
-          <Avatar fallback={user?.name || "User"} size="md" />
+          <Avatar size="md">
+            <AvatarImage src={(user as any)?.profile_image_url} alt={user?.name} />
+            <AvatarFallback className="bg-primary/10 text-primary font-bold">
+              {user?.name?.charAt(0) || "U"}
+            </AvatarFallback>
+          </Avatar>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-foreground truncate">
               {user?.name || "Teacher"}

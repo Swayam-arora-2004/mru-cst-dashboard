@@ -246,9 +246,9 @@ router.get('/code/:code', authenticate, async (req: AuthRequest, res: Response):
 // Create new course
 router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { code, name, description, credits, type, department_id, semester } = req.body;
+    const { code, name, description, credits, type, department_id, semester, year, class_id } = req.body;
 
-    if (!code || !name || !type || !department_id || !semester) {
+    if (!code || !name || !type || !department_id || !semester || !year) {
       const response: ApiResponse = {
         success: false,
         error: 'Missing required fields',
@@ -285,6 +285,8 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
         type,
         department_id,
         semester,
+        year,
+        class_id,
         is_active: true,
       })
       .select('*, departments(*)')
