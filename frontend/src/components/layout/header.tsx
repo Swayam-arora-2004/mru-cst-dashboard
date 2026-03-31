@@ -13,13 +13,13 @@ interface HeaderProps {
 export function Header({ title, description, action }: HeaderProps) {
   return (
     <header className="sticky top-0 z-30 bg-card/80 backdrop-blur-md border-b border-border">
-      <div className="flex items-center justify-between px-6 py-4 lg:px-8">
-        <div className="flex-1 min-w-0 lg:ml-0 ml-12">
-          <h1 className="text-2xl font-bold text-foreground truncate">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-4 py-4 lg:px-8 gap-4">
+        <div className="flex-1 min-w-0 lg:ml-0 ml-10">
+          <h1 className="text-xl sm:text-2xl font-bold text-foreground truncate">
             {title}
           </h1>
           {description && (
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p className="mt-0.5 text-xs sm:text-sm text-muted-foreground truncate sm:whitespace-normal">
               {description}
             </p>
           )}

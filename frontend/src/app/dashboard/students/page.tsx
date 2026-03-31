@@ -593,18 +593,18 @@ export default function StudentsPage() {
         title="Students"
         description="Manage student records and information"
         action={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsBulkModalOpen(true)}>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={() => setIsBulkModalOpen(true)} className="flex-1 sm:flex-initial">
               <Upload className="h-4 w-4" />
-              Import Roster (Excel)
+              <span className="hidden sm:inline">Import</span>
             </Button>
-            <Button variant="outline" onClick={() => setIsBulkPhotoModalOpen(true)}>
+            <Button variant="outline" onClick={() => setIsBulkPhotoModalOpen(true)} className="flex-1 sm:flex-initial">
               <Camera className="h-4 w-4" />
-              Upload Photos
+              <span className="hidden sm:inline">Photos</span>
             </Button>
-            <Button onClick={() => setIsAddModalOpen(true)}>
+            <Button onClick={() => setIsAddModalOpen(true)} className="flex-1 sm:flex-initial">
               <Plus className="h-4 w-4" />
-              Add Student
+              <span className="hidden sm:inline">Add Student</span>
             </Button>
           </div>
         }
@@ -786,7 +786,7 @@ export default function StudentsPage() {
                           </div>
                         </div>
                         <div className="relative">
-                          <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors opacity-0 group-hover:opacity-100">
+                          <button className="p-2 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
                             <MoreVertical className="h-4 w-4" />
                           </button>
                           <div className="absolute right-0 top-full mt-1 w-40 py-1 bg-white dark:bg-zinc-900 rounded-xl shadow-lg border border-zinc-200 dark:border-zinc-800 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">

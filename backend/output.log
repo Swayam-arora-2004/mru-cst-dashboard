@@ -1,0 +1,9 @@
+[INFO] 2026-03-30T10:07:48.552Z 🤖 Loading face recognition models...
+[INFO] 2026-03-30T10:07:49.547Z ✅ Face API backend ready
+[INFO] 2026-03-30T10:07:49.600Z ✅ Face recognition models loaded successfully
+Models loaded.
+Original image downloaded. Processing with sharp...
+Error: Input buffer contains unsupported image format
+    at Sharp.toBuffer (/Users/sa/Downloads/mru-cst-dashboard/backend/node_modules/sharp/lib/output.js:163:17)
+    at verify (/Users/sa/Downloads/mru-cst-dashboard/backend/verify-upload.ts:21:6)
+    at process.processTicksAndRejections (node:internal/process/task_queues:103:5)

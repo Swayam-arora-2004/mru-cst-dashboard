@@ -205,7 +205,7 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response): Prom
     // Get counts strictly for current teacher
     const [studentsResult, coursesResult, departmentsResult, classesResult] = await Promise.all([
       supabase.from('students').select('id', { count: 'exact', head: true }).eq('teacher_id', req.user!.id),
-      supabase.from('courses').select('id', { count: 'exact', head: true }),
+      supabase.from('courses').select('id', { count: 'exact', head: true }).eq('teacher_id', req.user!.id),
       supabase.from('departments').select('id', { count: 'exact', head: true }),
       supabase.from('classes').select('id', { count: 'exact', head: true }),
     ]);
@@ -218,10 +218,11 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response): Prom
       .order('created_at', { ascending: false })
       .limit(6);
 
-    // Get recent courses (assuming user wants general metrics for now)
+    // Get recent courses specifically added by current teacher
     const { data: recentCourses } = await supabase
       .from('courses')
       .select('id, code, name, created_at')
+      .eq('teacher_id', req.user!.id)
       .order('created_at', { ascending: false })
       .limit(6);
 

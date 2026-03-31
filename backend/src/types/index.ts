@@ -62,6 +62,7 @@ export interface Course {
   credits: number;
   type: 'lecture' | 'tutorial' | 'lab' | 'mooc' | 'elective';
   department_id: string;
+  teacher_id: string;
   semester: number;
   year: number;
   class_id?: string;

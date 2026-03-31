@@ -557,14 +557,14 @@ const courseTypes = [
         title="Courses"
         description="Manage course codes and information"
         action={
-          <div className="flex gap-2">
-            <Button variant="outline" onClick={() => setIsGenerateModalOpen(true)}>
+          <div className="flex gap-2 w-full sm:w-auto">
+            <Button variant="outline" onClick={() => setIsGenerateModalOpen(true)} className="flex-1 sm:flex-initial">
               <Sparkles className="h-4 w-4" />
-              Generate Code
+              <span className="hidden sm:inline">Generate Code</span>
             </Button>
-            <Button onClick={() => setIsAddModalOpen(true)}>
+            <Button onClick={() => setIsAddModalOpen(true)} className="flex-1 sm:flex-initial">
               <Plus className="h-4 w-4" />
-              Add Course
+              <span className="hidden sm:inline">Add Course</span>
             </Button>
           </div>
         }
@@ -699,7 +699,7 @@ const courseTypes = [
                           </p>
                         </div>
                         <div className="relative">
-                          <button className="p-2 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors opacity-0 group-hover:opacity-100">
+                          <button className="p-2 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors">
                             <MoreVertical className="h-4 w-4" />
                           </button>
                           <div className="absolute right-0 top-full mt-1 w-36 py-1 bg-white dark:bg-zinc-900 rounded-xl shadow-lg border border-zinc-200 dark:border-zinc-800 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-10">

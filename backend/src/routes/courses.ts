@@ -24,7 +24,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
 
     let query = supabase
       .from('courses')
-      .select('*, departments(*)', { count: 'exact' });
+      .select('*, departments(*)', { count: 'exact' })
+      .eq('teacher_id', req.user!.id);
 
     if (search) {
       query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%`);
@@ -68,7 +69,8 @@ router.get('/codes', authenticate, async (req: AuthRequest, res: Response): Prom
 
     const { data: courses, error } = await supabase
       .from('courses')
-      .select('code');
+      .select('code')
+      .eq('teacher_id', req.user!.id);
 
     if (error) throw error;
 
@@ -108,7 +110,8 @@ router.post('/generate-code', authenticate, async (req: AuthRequest, res: Respon
     // Get existing course codes
     const { data: courses, error } = await supabase
       .from('courses')
-      .select('code');
+      .select('code')
+      .eq('teacher_id', req.user!.id);
 
     if (error) throw error;
 
@@ -149,7 +152,8 @@ router.post('/validate-code', authenticate, async (req: AuthRequest, res: Respon
     // Get existing course codes
     const { data: courses, error } = await supabase
       .from('courses')
-      .select('code');
+      .select('code')
+      .eq('teacher_id', req.user!.id);
 
     if (error) throw error;
 
@@ -181,6 +185,7 @@ router.get('/:id', authenticate, validateId('id'), async (req: AuthRequest, res:
       .from('courses')
       .select('*, departments(*)')
       .eq('id', id)
+      .eq('teacher_id', req.user!.id)
       .single();
 
     if (error || !course) {
@@ -217,6 +222,7 @@ router.get('/code/:code', authenticate, async (req: AuthRequest, res: Response):
       .from('courses')
       .select('*, departments(*)')
       .eq('code', code)
+      .eq('teacher_id', req.user!.id)
       .single();
 
     if (error || !course) {
@@ -264,6 +270,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
       .from('courses')
       .select('id')
       .eq('code', code)
+      .eq('teacher_id', req.user!.id)
       .single();
 
     if (existing) {
@@ -287,6 +294,7 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
         semester,
         year,
         class_id,
+        teacher_id: req.user!.id,
         is_active: true,
       })
       .select('*, departments(*)')
@@ -328,6 +336,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
         .from('courses')
         .select('id')
         .eq('code', updateData.code)
+        .eq('teacher_id', req.user!.id)
         .neq('id', id)
         .single();
 
@@ -345,6 +354,7 @@ router.put('/:id', authenticate, async (req: AuthRequest, res: Response): Promis
       .from('courses')
       .update(updateData)
       .eq('id', id)
+      .eq('teacher_id', req.user!.id)
       .select('*, departments(*)')
       .single();
 
@@ -375,7 +385,8 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response): Pro
     const { error } = await supabase
       .from('courses')
       .delete()
-      .eq('id', id);
+      .eq('id', id)
+      .eq('teacher_id', req.user!.id);
 
     if (error) throw error;
 

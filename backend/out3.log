@@ -1,0 +1,5 @@
+[INFO] 2026-03-30T10:17:06.803Z 🤖 Loading face recognition models...
+[INFO] 2026-03-30T10:17:06.955Z ✅ Face API backend ready
+[INFO] 2026-03-30T10:17:07.006Z ✅ Face recognition models loaded successfully
+Error during detect: TypeError: Cannot read properties of undefined (reading 'SsdMobilenetv1Options')
+    at run (/Users/sa/Downloads/mru-cst-dashboard/backend/test_img.ts:18:30)

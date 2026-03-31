@@ -71,16 +71,18 @@ CREATE TABLE IF NOT EXISTS students (
 -- Courses table
 CREATE TABLE IF NOT EXISTS courses (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  code VARCHAR(50) UNIQUE NOT NULL,
+  code VARCHAR(50) NOT NULL,
   name VARCHAR(255) NOT NULL,
   description TEXT,
   credits INTEGER DEFAULT 3,
   type VARCHAR(50) NOT NULL CHECK (type IN ('lecture', 'tutorial', 'lab', 'mooc', 'elective')),
   department_id UUID REFERENCES departments(id) ON DELETE SET NULL,
+  teacher_id UUID REFERENCES teachers(id) ON DELETE CASCADE,
   semester INTEGER NOT NULL CHECK (semester >= 1 AND semester <= 12),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(code, teacher_id)
 );
 
 -- Student-Course enrollment (many-to-many)
@@ -118,6 +120,7 @@ CREATE INDEX IF NOT EXISTS idx_courses_code ON courses(code);
 CREATE INDEX IF NOT EXISTS idx_courses_department ON courses(department_id);
 CREATE INDEX IF NOT EXISTS idx_courses_type ON courses(type);
 CREATE INDEX IF NOT EXISTS idx_courses_semester ON courses(semester);
+CREATE INDEX IF NOT EXISTS idx_courses_teacher ON courses(teacher_id);
 CREATE INDEX IF NOT EXISTS idx_courses_active ON courses(is_active) WHERE is_active = true;
 CREATE INDEX IF NOT EXISTS idx_classes_department ON classes(department_id);
 CREATE INDEX IF NOT EXISTS idx_classes_year ON classes(year);

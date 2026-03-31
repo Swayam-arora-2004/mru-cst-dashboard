@@ -1,0 +1,10 @@
+[INFO] 2026-03-30T10:23:28.245Z 🤖 Loading face recognition models...
+[INFO] 2026-03-30T10:23:28.734Z ✅ Face API backend ready
+[INFO] 2026-03-30T10:23:28.792Z ✅ Face recognition models loaded successfully
+node:internal/process/promises:332
+    triggerUncaughtException(err, true /* fromPromise */);
+    ^
+
+[Error: Unsupported image type] { code: 'InvalidArg' }
+
+Node.js v25.2.1
