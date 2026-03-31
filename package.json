@@ -1,0 +1,11 @@
+{
+  "name": "mru-cst-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "setup-env": "node setup-env.js",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev",
+    "install:all": "cd backend && npm install && cd ../frontend && npm install"
+  }
+}

@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import path from 'path';
 import multer from 'multer';
 import sharp from 'sharp';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,6 +9,7 @@ import { validateId } from '../middleware/security';
 import { AuthRequest, ApiResponse, PaginatedResponse, Student } from '../types';
 import { config } from '../config';
 import logger from '../lib/logger';
+import { detectAndEncode, isModelsLoaded, loadModels } from '../lib/faceRecognition';
 
 const router = Router();
 
@@ -41,7 +43,9 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
     const search = req.query.search as string;
     const classId = req.query.class_id as string;
     const year = req.query.year as string;
+    const semester = req.query.semester as string;
     const departmentId = req.query.department_id as string;
+    const specialization = req.query.specialization as string;
 
     const supabase = getSupabaseAdminClient();
 
@@ -58,7 +62,9 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
 
     if (classId) query = query.eq('class_id', classId);
     if (year) query = query.eq('year', parseInt(year));
+    if (semester) query = query.eq('semester', parseInt(semester));
     if (departmentId) query = query.eq('department_id', departmentId);
+    if (specialization) query = query.eq('specialization', specialization);
 
     const { data, count, error } = await query
       .order('name')
@@ -245,27 +251,50 @@ router.post(
         return;
       }
 
+      console.log(`[Upload] Starting image processing for student ${req.params.id}...`);
       const supabase = getSupabaseAdminClient();
 
+      console.log(`[Upload] Resizing image with sharp (aspect-ratio preserved)...`);
       const buffer = await sharp(req.file.buffer)
-        .resize(400, 400, { fit: 'cover' })
+        .rotate() // Auto-rotate based on EXIF so iPhone faces aren't sideways
+        .resize({ width: 800, withoutEnlargement: true })
         .jpeg({ quality: 80 })
         .toBuffer();
 
       const path = `students/${req.params.id}/${uuidv4()}.jpg`;
 
+      console.log(`[Upload] Uploading to Supabase storage...`);
       await supabase.storage.from('images').upload(path, buffer, {
         contentType: 'image/jpeg',
         upsert: true,
       });
+      console.log(`[Upload] Supabase upload complete!`);
 
       const { data: { publicUrl } } = supabase.storage
         .from('images')
         .getPublicUrl(path);
 
+      // Revert completely to lightning-fast Client-Side encoding ingestion!
+      let faceEncoding: number[] | null = null;
+      if (req.body.face_encoding) {
+        try {
+          console.log(`[Upload] Receiving pre-compiled face encoding securely from Client GPU!`);
+          faceEncoding = JSON.parse(req.body.face_encoding);
+        } catch (parseErr) {
+          console.warn(`[Upload] Failed to parse face encoding array from client string:`, parseErr);
+        }
+      }
+
+      console.log(`[Upload] Updating database record...`);
+
+      const updateData: Record<string, unknown> = { profile_image_url: publicUrl };
+      if (faceEncoding) {
+        updateData.face_encoding = faceEncoding;
+      }
+
       const { data, error } = await supabase
         .from('students')
-        .update({ profile_image_url: publicUrl })
+        .update(updateData)
         .eq('id', req.params.id)
         .eq('teacher_id', req.user!.id) // 🔑 ISOLATION
         .select()
@@ -276,7 +305,9 @@ router.post(
       res.status(200).json({
         success: true,
         data,
-        message: 'Image uploaded successfully',
+        message: faceEncoding
+          ? 'Image uploaded and face encoding saved successfully'
+          : `Image uploaded successfully but AI Failed (Check backend/face_debug.log)`,
       });
     } catch (error) {
       logger.error('Upload image error:', error);
@@ -284,6 +315,259 @@ router.post(
     }
   }
 );
+
+/* =========================
+   BULK CREATE STUDENTS
+========================= */
+
+router.post('/bulk', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const students = req.body.students;
+
+    if (!Array.isArray(students) || students.length === 0) {
+      res.status(400).json({ success: false, error: 'Multiple student records required' });
+      return;
+    }
+
+    const supabase = getSupabaseAdminClient();
+
+    // 1. Fetch lookup maps for Classes and Departments to map names to IDs
+    const [{ data: classes }, { data: depts }] = await Promise.all([
+      supabase.from('classes').select('id, name'),
+      supabase.from('departments').select('id, name')
+    ]);
+
+    const classMap = new Map((classes || []).map(c => [c.name.toLowerCase(), c.id]));
+    const deptMap = new Map((depts || []).map(d => [d.name.toLowerCase(), d.id]));
+
+    // Helper to transform common cloud share links to direct download links
+    const toDirectImageUrl = (url: string) => {
+      if (!url || typeof url !== 'string') return url;
+      
+      const trimmedUrl = url.trim();
+      
+      // Google Drive Handler
+      if (trimmedUrl.includes('drive.google.com')) {
+        const fileIdMatch = trimmedUrl.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || trimmedUrl.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+        if (fileIdMatch && fileIdMatch[1]) {
+          return `https://drive.google.com/uc?export=download&id=${fileIdMatch[1]}`;
+        }
+      }
+      
+      // Dropbox Handler (Convert dl=0 to dl=1 for direct download)
+      if (trimmedUrl.includes('dropbox.com')) {
+        return trimmedUrl.replace(/\?dl=0$/, '?dl=1').replace(/&dl=0$/, '&dl=1');
+      }
+      
+      return trimmedUrl;
+    };
+
+    // Helper to find Class ID by name with common variations
+    const findClassId = (name: string) => {
+      if (!name) return null;
+      const normalized = name.toLowerCase().trim();
+      if (classMap.has(normalized)) return classMap.get(normalized);
+      
+      // Try common prefixes
+      if (classMap.has(`section ${normalized}`)) return classMap.get(`section ${normalized}`);
+      if (classMap.has(`class ${normalized}`)) return classMap.get(`class ${normalized}`);
+      
+      // Fuzzy match (contains)
+      for (const [className, id] of classMap.entries()) {
+        if (className.includes(normalized)) return id;
+      }
+      return null;
+    };
+
+    // Helper to find Department ID by name with fuzzy matching
+    const findDeptId = (name: string) => {
+      if (!name) return null;
+      const normalized = name.toLowerCase().trim();
+      
+      // Try EXACT match first to avoid "Computer Science" matching "Computer Science (Specialization)"
+      if (deptMap.has(normalized)) return deptMap.get(normalized);
+      
+      // Try fuzzy match if no exact match found
+      for (const [deptName, id] of deptMap.entries()) {
+        if (deptName.includes(normalized) || normalized.includes(deptName)) return id;
+      }
+      return null;
+    };
+
+    // 2. Map and Validate records
+    const uniqueStudentsMap = new Map();
+    
+    students.forEach((s: any) => {
+      const roll = s.roll_number?.toString().trim();
+      if (!roll) return;
+      
+      uniqueStudentsMap.set(roll, {
+        teacher_id: req.user!.id,
+        roll_number: roll,
+        name: s.name,
+        email: s.email,
+        phone: s.phone || null,
+        class_id: s.class_id || findClassId(s.class_name),
+        department_id: s.department_id || findDeptId(s.department_name),
+        year: parseInt(s.year) || null,
+        semester: parseInt(s.semester) || null,
+        profile_image_url: toDirectImageUrl(s.photos || s.profile_image_url || null),
+        specialization: s.specialization || null
+      });
+    });
+
+    const mappedStudents = Array.from(uniqueStudentsMap.values());
+
+    // 3. Perform bulk upsert (Update if exists, Insert if new)
+    const { data, error } = await supabase
+      .from('students')
+      .upsert(mappedStudents, { onConflict: 'roll_number' })
+      .select();
+
+    if (error) {
+      console.error('BULK_INSERT_ERROR:', error.message, error.details);
+      throw error;
+    }
+
+    // 4. Background Face Encoding Processing
+    // We do this after response to avoid timeout, but we use Promise.all to track briefly
+    const studentsWithImages = mappedStudents.filter(s => s.profile_image_url);
+    if (studentsWithImages.length > 0) {
+      // Create a background task
+      (async () => {
+        try {
+          if (!isModelsLoaded()) await loadModels();
+          
+          for (const student of studentsWithImages) {
+            try {
+              // Fetch image
+              const response = await fetch(student.profile_image_url);
+              if (!response.ok) continue;
+              
+              const buffer = Buffer.from(await response.arrayBuffer());
+              const encoding = await detectAndEncode(buffer);
+              
+              if (encoding) {
+                await supabase
+                  .from('students')
+                  .update({ face_encoding: Array.from(encoding) })
+                  .eq('roll_number', student.roll_number);
+              }
+            } catch (err) {
+              logger.error(`Failed to encode face for ${student.roll_number}:`, err);
+            }
+          }
+        } catch (err) {
+          logger.error('Background AI processing error:', err);
+        }
+      })();
+    }
+
+    res.status(201).json({
+      success: true,
+      data,
+      message: `Successfully imported ${data.length} students. AI face processing started in the background.`
+    });
+  } catch (error: any) {
+    logger.error('Bulk create students error:', error);
+    res.status(500).json({ 
+      success: false, 
+      error: `Bulk import failed: ${error.message || 'Database rejection'}` 
+    });
+  }
+});
+
+/* =========================
+   BULK PHOTO UPLOAD
+========================= */
+
+router.post('/bulk-photos', authenticate, upload.array('photos', 50), async (req: AuthRequest, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      res.status(400).json({ success: false, error: 'No photo files provided' });
+      return;
+    }
+
+    const supabase = getSupabaseAdminClient();
+    const results = {
+      successCount: 0,
+      failCount: 0,
+      errors: [] as string[]
+    };
+
+    // Load AI models once
+    if (!isModelsLoaded()) await loadModels();
+
+    for (const file of files) {
+      try {
+        // 1. Extract Roll Number from filename (e.g., "2K22CSUN01001.jpg" -> "2K22CSUN01001")
+        const rollNumber = path.parse(file.originalname).name.trim();
+        
+        // 2. Find student
+        const { data: student, error: findError } = await supabase
+          .from('students')
+          .select('id, name')
+          .eq('roll_number', rollNumber)
+          .eq('teacher_id', req.user!.id)
+          .single();
+
+        if (findError || !student) {
+          results.failCount++;
+          results.errors.push(`Student not found for roll number: ${rollNumber}`);
+          continue;
+        }
+
+        // 3. Upload to Storage
+        const fileExt = path.extname(file.originalname);
+        const fileName = `${student.id}_${Date.now()}${fileExt}`;
+        const filePath = `${req.user!.id}/${fileName}`;
+
+        const { error: uploadError } = await supabase.storage
+          .from('student-photos')
+          .upload(filePath, file.buffer, {
+            contentType: file.mimetype,
+            upsert: true
+          });
+
+        if (uploadError) throw uploadError;
+
+        const { data: { publicUrl } } = supabase.storage
+          .from('student-photos')
+          .getPublicUrl(filePath);
+
+        // 4. Generate AI Face Encoding
+        const encoding = await detectAndEncode(file.buffer);
+
+        // 5. Update Student
+        const { error: updateError } = await supabase
+          .from('students')
+          .update({
+            profile_image_url: publicUrl,
+            face_encoding: encoding ? Array.from(encoding) : null,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', student.id);
+
+        if (updateError) throw updateError;
+        
+        results.successCount++;
+      } catch (err: any) {
+        results.failCount++;
+        results.errors.push(`Error processing ${file.originalname}: ${err.message}`);
+      }
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Processed ${files.length} photos. ${results.successCount} succeeded, ${results.failCount} failed.`,
+      results
+    });
+  } catch (error: any) {
+    logger.error('Bulk photo upload error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 
 /* =========================
    DELETE STUDENT

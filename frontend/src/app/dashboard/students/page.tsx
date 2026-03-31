@@ -1,15 +1,16 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import * as XLSX from 'xlsx';
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye, Users, Camera, Upload, X, ImagePlus } from "lucide-react";
+import { Plus, Search, Filter, MoreVertical, Edit, Trash2, Eye, Users, Camera, Upload, X, ImagePlus, Info } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar } from "@/components/ui/avatar";
+import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Modal } from "@/components/ui/modal";
 import { Spinner } from "@/components/ui/spinner";
@@ -18,6 +19,7 @@ import { studentsApi, generalApi, faceRecognitionApi, Student, Department, Class
 import { debounce, formatDate } from "@/lib/utils";
 import { API_CONFIG } from "@/lib/constants";
 import { getSemesterOptions, getYearForSemester } from "@/lib/yearSemesterUtils";
+import * as faceapi from '@vladmandic/face-api';
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -35,10 +37,16 @@ export default function StudentsPage() {
   const [search, setSearch] = useState("");
   const [selectedDepartment, setSelectedDepartment] = useState("");
   const [selectedYear, setSelectedYear] = useState("");
+  const [selectedSemester, setSelectedSemester] = useState("");
+  const [selectedClass, setSelectedClass] = useState("");
+  const [selectedSpecialization, setSelectedSpecialization] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
 
   // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [isBulkModalOpen, setIsBulkModalOpen] = useState(false);
+  const [isBulkPhotoModalOpen, setIsBulkPhotoModalOpen] = useState(false);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -56,12 +64,15 @@ export default function StudentsPage() {
     department_id: "",
     specialization: "",
   });
+  const [bulkData, setBulkData] = useState<any[]>([]);
+  const [bulkPhotoFiles, setBulkPhotoFiles] = useState<File[]>([]);
+  const [bulkPhotoResults, setBulkPhotoResults] = useState<any | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isUploadingPhotos, setIsUploadingPhotos] = useState(false);
   
   // Image upload state
   const [selectedImage, setSelectedImage] = useState<File | null>(null);
   const [imagePreview, setImagePreview] = useState<string | null>(null);
-  const [generateFaceEncoding, setGenerateFaceEncoding] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Fetch students
@@ -74,6 +85,9 @@ export default function StudentsPage() {
         search: search || undefined,
         department_id: selectedDepartment || undefined,
         year: selectedYear ? parseInt(selectedYear) : undefined,
+        semester: selectedSemester ? parseInt(selectedSemester) : undefined,
+        class_id: selectedClass || undefined,
+        specialization: selectedSpecialization || undefined,
       });
 
       if (response.success && response.data) {
@@ -87,7 +101,7 @@ export default function StudentsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [pagination.page, pagination.limit, search, selectedDepartment, selectedYear]);
+  }, [pagination.page, pagination.limit, search, selectedDepartment, selectedYear, selectedSemester, selectedClass, selectedSpecialization]);
 
   // Debounced search
   const debouncedSearch = useCallback(
@@ -110,6 +124,20 @@ export default function StudentsPage() {
     generalApi.getClasses({}).then((res) => {
       if (res.success && res.data) setClasses(res.data);
     });
+
+    const loadFaceModels = async () => {
+      try {
+        await Promise.all([
+          faceapi.nets.ssdMobilenetv1.loadFromUri('/models'),
+          faceapi.nets.faceLandmark68Net.loadFromUri('/models'),
+          faceapi.nets.faceRecognitionNet.loadFromUri('/models')
+        ]);
+        setModelsLoaded(true);
+      } catch (e) {
+        console.error("Failed to load browser face models:", e);
+      }
+    };
+    loadFaceModels();
   }, []);
 
   const handleAddStudent = async (e: React.FormEvent) => {
@@ -138,13 +166,24 @@ export default function StudentsPage() {
           const formDataImg = new FormData();
           formDataImg.append("image", selectedImage);
           
+          if (modelsLoaded) {
+            try {
+              const img = await faceapi.bufferToImage(selectedImage);
+              const detection = await faceapi.detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }))
+                                      .withFaceLandmarks()
+                                      .withFaceDescriptor();
+              if (detection) {
+                formDataImg.append("face_encoding", JSON.stringify(Array.from(detection.descriptor)));
+              } else {
+                toast.warning("Warning: No clear face detected in the photo. AI scanning will be disabled for this student unless you provide a clear photo.");
+              }
+            } catch (err) {
+              console.error("Failed native face encoding:", err);
+            }
+          }
+          
           try {
             await studentsApi.uploadImage(studentId, formDataImg);
-            
-            // Step 3: Generate face encoding if enabled
-            if (generateFaceEncoding && imagePreview) {
-              await generateAndStoreFaceEncoding(studentId, imagePreview);
-            }
           } catch (imgError) {
             console.error("Image upload error:", imgError);
             toast.error("Student created but image upload failed");
@@ -163,63 +202,6 @@ export default function StudentsPage() {
     }
   };
 
-  // Generate face encoding from image
-  const generateAndStoreFaceEncoding = async (studentId: string, imageData: string) => {
-    try {
-      const faceapi = await import("face-api.js");
-      
-      // Check if models are loaded, if not load them
-      if (!faceapi.nets.tinyFaceDetector.isLoaded) {
-        const MODEL_URL = API_CONFIG.FACE_API_MODEL_URL;
-        await Promise.all([
-          faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-          faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL), // Fallback detector
-          faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-          faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL),
-        ]);
-      }
-      
-      // Create image element
-      const img = document.createElement("img");
-      img.src = imageData;
-      await new Promise((resolve) => (img.onload = resolve));
-      
-      // Try TinyFaceDetector first with lenient settings
-      const tinyOptions = new faceapi.TinyFaceDetectorOptions({ 
-        inputSize: 320, 
-        scoreThreshold: 0.2 
-      });
-      
-      let detection = await faceapi
-        .detectSingleFace(img, tinyOptions)
-        .withFaceLandmarks()
-        .withFaceDescriptor();
-      
-      // If TinyFaceDetector fails, try SSD MobileNet (more accurate but slower)
-      if (!detection) {
-        console.log("TinyFaceDetector failed, trying SSD MobileNet...");
-        const ssdOptions = new faceapi.SsdMobilenetv1Options({
-          minConfidence: 0.3
-        });
-        detection = await faceapi
-          .detectSingleFace(img, ssdOptions)
-          .withFaceLandmarks()
-          .withFaceDescriptor();
-      }
-      
-      if (detection) {
-        // Store the face encoding
-        const encoding = Array.from(detection.descriptor);
-        await faceRecognitionApi.storeEncoding(studentId, encoding);
-        toast.success("Face registered for recognition");
-      } else {
-        toast.info("No face detected in image - face recognition not enabled. Ensure the face is clearly visible.");
-      }
-    } catch (error) {
-      console.error("Face encoding error:", error);
-      // Don't show error toast, just log it - image was still uploaded
-    }
-  };
 
   const handleEditStudent = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -245,13 +227,24 @@ export default function StudentsPage() {
           const formDataImg = new FormData();
           formDataImg.append("image", selectedImage);
           
+          if (modelsLoaded) {
+            try {
+              const img = await faceapi.bufferToImage(selectedImage);
+              const detection = await faceapi.detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }))
+                                      .withFaceLandmarks()
+                                      .withFaceDescriptor();
+              if (detection) {
+                formDataImg.append("face_encoding", JSON.stringify(Array.from(detection.descriptor)));
+              } else {
+                toast.warning("Warning: No clear face detected in the photo. AI scanning will be disabled for this student unless you provide a clear photo.");
+              }
+            } catch (err) {
+              console.error("Failed native face encoding:", err);
+            }
+          }
+          
           try {
             await studentsApi.uploadImage(selectedStudent.id, formDataImg);
-            
-            // Generate face encoding if enabled
-            if (generateFaceEncoding && imagePreview) {
-              await generateAndStoreFaceEncoding(selectedStudent.id, imagePreview);
-            }
           } catch (imgError) {
             console.error("Image upload error:", imgError);
             toast.error("Student updated but image upload failed");
@@ -304,7 +297,6 @@ export default function StudentsPage() {
     setSelectedStudent(null);
     setSelectedImage(null);
     setImagePreview(null);
-    setGenerateFaceEncoding(true);
   };
 
   // Handle image selection
@@ -317,19 +309,99 @@ export default function StudentsPage() {
       return;
     }
     
-    if (file.size > 5 * 1024 * 1024) {
-      toast.error("Image must be less than 5MB");
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please select an image file");
       return;
     }
     
     setSelectedImage(file);
-    
-    // Create preview
     const reader = new FileReader();
-    reader.onload = (e) => {
-      setImagePreview(e.target?.result as string);
-    };
+    reader.onload = (e) => setImagePreview(e.target?.result as string);
     reader.readAsDataURL(file);
+  };
+
+  const handleBulkFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const bstr = evt.target?.result;
+        const wb = XLSX.read(bstr, { type: 'binary' });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+        const data = XLSX.utils.sheet_to_json(ws);
+        
+        // Define column mapping (flexible naming)
+        const mappedData = data.map((row: any) => {
+          // Helper to find value regardless of case or common variations
+          const find = (keys: string[]) => {
+            const foundKey = Object.keys(row).find(k => 
+              keys.some(searchKey => k.trim().toLowerCase() === searchKey.toLowerCase())
+            );
+            return foundKey ? row[foundKey] : '';
+          };
+
+          return {
+            name: find(['Name', 'Full Name']),
+            class_name: find(['Class', 'Section']),
+            roll_number: find(['Roll number', 'Roll Number', 'rollnumber', 'Roll No', 'Roll No.', 'Roll_No']),
+            email: find(['Email', 'email', 'Email ID', 'Email_ID', 'Email ID']),
+            phone: find(['Phone no', 'Phone No', 'phone', 'Phone Number', 'Phone']),
+            year: find(['Year', 'year', 'Batch']),
+            semester: find(['Semester', 'semester', 'Sem']),
+            department_name: find(['Department', 'department', 'Dept', 'Dept.'])
+          };
+        }).filter(s => s.roll_number && s.name); // Filter out empty rows
+
+        setBulkData(mappedData.filter(d => d.name || d.roll_number));
+      } catch (err) {
+        toast.error("Failed to parse Excel file");
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  const processBulkUpload = async () => {
+    if (bulkData.length === 0) return;
+    setIsSubmitting(true);
+    try {
+      const response = await studentsApi.bulkCreate(bulkData);
+      if (response.success) {
+        toast.success(response.message || `Successfully imported ${bulkData.length} students`);
+        setIsBulkModalOpen(false);
+        setBulkData([]);
+        fetchStudents();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Bulk import failed");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleBulkPhotoUpload = async () => {
+    if (bulkPhotoFiles.length === 0) return;
+    setIsUploadingPhotos(true);
+    setBulkPhotoResults(null);
+    try {
+      const formData = new FormData();
+      bulkPhotoFiles.forEach(file => {
+        formData.append("photos", file);
+      });
+      
+      const response = await studentsApi.uploadBulkPhotos(formData);
+      if (response.success) {
+        setBulkPhotoResults((response as any).results);
+        toast.success(response.message);
+        fetchStudents();
+      }
+    } catch (err: any) {
+      toast.error(err.message || "Photo upload failed");
+    } finally {
+      setIsUploadingPhotos(false);
+    }
   };
 
   const clearImage = () => {
@@ -405,20 +477,9 @@ export default function StudentsPage() {
             className="hidden"
           />
           <p className="text-xs text-muted-foreground mt-2">
-            JPG, PNG up to 5MB
+            JPG, PNG up to 5MB. Face will be auto-encoded.
           </p>
         </div>
-        {imagePreview && (
-          <label className="flex items-center gap-2 text-sm text-muted-foreground cursor-pointer">
-            <input
-              type="checkbox"
-              checked={generateFaceEncoding}
-              onChange={(e) => setGenerateFaceEncoding(e.target.checked)}
-              className="rounded border-border"
-            />
-            <span>Enable face recognition for this student</span>
-          </label>
-        )}
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -532,10 +593,20 @@ export default function StudentsPage() {
         title="Students"
         description="Manage student records and information"
         action={
-          <Button onClick={() => setIsAddModalOpen(true)}>
-            <Plus className="h-4 w-4" />
-            Add Student
-          </Button>
+          <div className="flex gap-2">
+            <Button variant="outline" onClick={() => setIsBulkModalOpen(true)}>
+              <Upload className="h-4 w-4" />
+              Import Roster (Excel)
+            </Button>
+            <Button variant="outline" onClick={() => setIsBulkPhotoModalOpen(true)}>
+              <Camera className="h-4 w-4" />
+              Upload Photos
+            </Button>
+            <Button onClick={() => setIsAddModalOpen(true)}>
+              <Plus className="h-4 w-4" />
+              Add Student
+            </Button>
+          </div>
         }
       />
 
@@ -599,12 +670,57 @@ export default function StudentsPage() {
                         setPagination((prev) => ({ ...prev, page: 1 }));
                       }}
                     />
+                    <Select
+                      label="Semester"
+                      placeholder="All semesters"
+                      options={[
+                        { value: "", label: "All semesters" },
+                        { value: "1", label: "Semester 1" },
+                        { value: "2", label: "Semester 2" },
+                        { value: "3", label: "Semester 3" },
+                        { value: "4", label: "Semester 4" },
+                        { value: "5", label: "Semester 5" },
+                        { value: "6", label: "Semester 6" },
+                        { value: "7", label: "Semester 7" },
+                        { value: "8", label: "Semester 8" },
+                      ]}
+                      value={selectedSemester}
+                      onChange={(e) => {
+                        setSelectedSemester(e.target.value);
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                    />
+                    <Select
+                      label="Class"
+                      placeholder="All classes"
+                      options={[
+                        { value: "", label: "All classes" },
+                        ...classes.map(c => ({ value: c.id, label: c.name }))
+                      ]}
+                      value={selectedClass}
+                      onChange={(e) => {
+                        setSelectedClass(e.target.value);
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                    />
+                    <Input
+                      label="Specialization"
+                      placeholder="e.g. AI-ML, Cloud"
+                      value={selectedSpecialization}
+                      onChange={(e) => {
+                        setSelectedSpecialization(e.target.value);
+                        setPagination((prev) => ({ ...prev, page: 1 }));
+                      }}
+                    />
                     <div className="flex items-end">
                       <Button
                         variant="ghost"
                         onClick={() => {
                           setSelectedDepartment("");
                           setSelectedYear("");
+                          setSelectedSemester("");
+                          setSelectedClass("");
+                          setSelectedSpecialization("");
                           setSearch("");
                           setPagination((prev) => ({ ...prev, page: 1 }));
                         }}
@@ -649,11 +765,10 @@ export default function StudentsPage() {
                   <Card hover className="group">
                     <CardContent className="p-4">
                       <div className="flex items-start gap-4">
-                        <Avatar
-                          src={student.profile_image_url}
-                          fallback={student.name}
-                          size="lg"
-                        />
+                        <Avatar size="lg">
+                          <AvatarImage src={student.profile_image_url} alt={student.name} />
+                          <AvatarFallback>{student.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
                         <div className="flex-1 min-w-0">
                           <h3 className="font-medium text-foreground truncate">
                             {student.name}
@@ -788,11 +903,10 @@ export default function StudentsPage() {
         {selectedStudent && (
           <div className="space-y-6">
             <div className="flex items-center gap-4">
-              <Avatar
-                src={selectedStudent.profile_image_url}
-                fallback={selectedStudent.name}
-                size="xl"
-              />
+              <Avatar size="xl">
+                <AvatarImage src={selectedStudent.profile_image_url} alt={selectedStudent.name} />
+                <AvatarFallback>{selectedStudent.name.charAt(0)}</AvatarFallback>
+              </Avatar>
               <div>
                 <h3 className="text-xl font-semibold text-zinc-900 dark:text-white">
                   {selectedStudent.name}
@@ -887,6 +1001,166 @@ export default function StudentsPage() {
               Delete
             </Button>
           </div>
+        </div>
+      </Modal>
+      <Modal
+        isOpen={isBulkModalOpen}
+        onClose={() => {
+          setIsBulkModalOpen(false);
+          setBulkData([]);
+        }}
+        title="Bulk Import Students"
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 p-4 rounded-xl flex gap-3 text-sm">
+            <Info className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0" />
+            <div className="space-y-1">
+              <p className="font-medium text-blue-900 dark:text-blue-200">Import Guidelines</p>
+              <ul className="list-disc list-inside text-blue-800/80 dark:text-blue-300/80 space-y-1">
+                <li><strong>Class Mapping</strong>: Short names like "A" are auto-mapped to "Section A".</li>
+                <li><strong>Student Photos</strong>: Embedded images in Excel cells cannot be imported. Please use public <strong>URL links</strong> in the Photo column.</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="p-8 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl text-center space-y-4">
+            <Upload className="h-10 w-10 text-zinc-400 mx-auto" />
+            <div>
+              <p className="font-medium">Upload Excel File</p>
+              <p className="text-sm text-muted-foreground">Select your .xlsx file (8 columns)</p>
+            </div>
+            <Input
+              type="file"
+              accept=".xlsx,.xls"
+              onChange={handleBulkFileChange}
+              className="max-w-xs mx-auto"
+            />
+          </div>
+
+          {bulkData.length > 0 && (
+            <div className="space-y-4">
+              <div className="max-h-60 overflow-auto border border-zinc-200 dark:border-zinc-800 rounded-lg">
+                <table className="w-full text-xs text-left">
+                  <thead className="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+                    <tr>
+                      <th className="px-3 py-2">Name</th>
+                      <th className="px-3 py-2">Roll No</th>
+                      <th className="px-3 py-2">Class</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bulkData.slice(0, 10).map((row, idx) => (
+                      <tr key={idx} className="border-b border-zinc-100 dark:border-zinc-800">
+                        <td className="px-3 py-2 truncate max-w-[100px]">{row.name}</td>
+                        <td className="px-3 py-2 font-mono">{row.roll_number}</td>
+                        <td className="px-3 py-2">{row.class_name}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <p className="text-xs text-muted-foreground italic">
+                Showing first 10 of {bulkData.length} records...
+              </p>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setBulkData([])}>Clear</Button>
+                <Button onClick={processBulkUpload} isLoading={isSubmitting}>
+                  Import {bulkData.length} Students
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
+      </Modal>
+      <Modal
+        isOpen={isBulkPhotoModalOpen}
+        onClose={() => {
+          setIsBulkPhotoModalOpen(false);
+          setBulkPhotoFiles([]);
+          setBulkPhotoResults(null);
+        }}
+        title="Upload Student Photos"
+      >
+        <div className="space-y-4">
+          <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-100 dark:border-zinc-800 p-4 rounded-xl flex gap-3 text-sm">
+            <Info className="h-5 w-5 text-zinc-600 dark:text-zinc-400 shrink-0" />
+            <div className="space-y-1 text-zinc-600 dark:text-zinc-400">
+              <p className="font-medium text-zinc-900 dark:text-zinc-200">How to Bulk Upload Photos</p>
+              <ul className="list-disc list-inside space-y-1">
+                <li>Name your files as <strong>ROLLNUMBER.jpg</strong> (e.g. 2K22CSUN01001.jpg)</li>
+                <li>Photos will be automatically matched and AI-registered</li>
+              </ul>
+            </div>
+          </div>
+
+          {!bulkPhotoResults && (
+            <div className="p-8 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-xl text-center space-y-4">
+              <Camera className="h-10 w-10 text-zinc-400 mx-auto" />
+              <div>
+                <p className="font-medium">Select Photos</p>
+                <p className="text-sm text-muted-foreground">Multiple JPG/PNG/WEBP files</p>
+              </div>
+              <Input
+                type="file"
+                multiple
+                accept="image/*"
+                onChange={(e) => {
+                  const files = Array.from(e.target.files || []);
+                  setBulkPhotoFiles(files);
+                }}
+                className="max-w-xs mx-auto"
+              />
+              {bulkPhotoFiles.length > 0 && (
+                <div className="pt-4 flex flex-col gap-2">
+                  <p className="text-sm font-medium">{bulkPhotoFiles.length} photos selected</p>
+                  <Button 
+                    onClick={handleBulkPhotoUpload} 
+                    isLoading={isUploadingPhotos}
+                    className="w-full"
+                  >
+                    Start Upload & AI Processing
+                  </Button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {bulkPhotoResults && (
+            <div className="space-y-4">
+              <div className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-lg border border-zinc-100 dark:border-zinc-800 text-sm">
+                <p className="font-medium mb-2">Import Results</p>
+                <div className="flex gap-4">
+                  <div className="flex-1 p-3 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400 rounded-md">
+                    <p className="text-xl font-bold">{bulkPhotoResults.successCount}</p>
+                    <p className="text-xs">Successfully matched</p>
+                  </div>
+                  <div className="flex-1 p-3 bg-red-50 dark:bg-red-900/20 text-red-700 dark:text-red-400 rounded-md">
+                    <p className="text-xl font-bold">{bulkPhotoResults.failCount}</p>
+                    <p className="text-xs">Failed / Not Found</p>
+                  </div>
+                </div>
+              </div>
+              
+              {bulkPhotoResults.errors.length > 0 && (
+                <div className="max-h-40 overflow-auto border border-zinc-200 dark:border-zinc-800 rounded-lg p-2 text-[10px] space-y-1 font-mono">
+                  {bulkPhotoResults.errors.map((err: string, i: number) => (
+                    <div key={i} className="text-red-500">{err}</div>
+                  ))}
+                </div>
+              )}
+
+              <Button 
+                variant="outline" 
+                className="w-full"
+                onClick={() => {
+                  setBulkPhotoFiles([]);
+                  setBulkPhotoResults(null);
+                }}
+              >
+                Reset for new batch
+              </Button>
+            </div>
+          )}
         </div>
       </Modal>
     </div>

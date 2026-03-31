@@ -111,6 +111,13 @@ export const authApi = {
       method: "PUT",
       body: data,
     }),
+  
+  uploadAvatar: (formData: FormData) =>
+    api<{ user: User }>("/auth/avatar", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    }),
 };
 
 // Students endpoints
@@ -122,7 +129,9 @@ export const studentsApi = {
     if (params?.search) query.set("search", params.search);
     if (params?.class_id) query.set("class_id", params.class_id);
     if (params?.year) query.set("year", params.year.toString());
+    if (params?.semester) query.set("semester", params.semester.toString());
     if (params?.department_id) query.set("department_id", params.department_id);
+    if (params?.specialization) query.set("specialization", params.specialization);
     return api<Student[]>(`/students?${query.toString()}`);
   },
   
@@ -132,6 +141,17 @@ export const studentsApi = {
   
   searchByRollNumber: (rollNumber: string) => api<Student>(`/students/roll/${rollNumber}`),
   
+  bulkCreate: (students: any[]) => api<{ message: string; data: Student[] }>("/students/bulk", {
+    method: "POST",
+    body: { students },
+  }),
+
+  uploadBulkPhotos: (formData: FormData) => api<{ message: string; results: any }>("/students/bulk-photos", {
+    method: "POST",
+    body: formData,
+    isFormData: true,
+  }),
+
   create: (data: CreateStudentData) =>
     api<Student>("/students", { method: "POST", body: data }),
   
@@ -212,13 +232,115 @@ export const faceRecognitionApi = {
     api<Array<{ id: string; name: string; roll_number: string; face_encoding: number[]; profile_image_url: string | null }>>("/face/encodings"),
   
   match: (formData: FormData) =>
-    api("/face/match", { method: "POST", body: formData, isFormData: true }),
+    api<{ student: Student; confidence: number; distance: number; scannedStudents: number }>("/face/match", { method: "POST", body: formData, isFormData: true }),
   
   storeEncoding: (studentId: string, encoding: number[]) =>
     api(`/face/encoding/${studentId}`, {
       method: "POST",
       body: { encoding },
     }),
+
+  // Upload an image to auto-encode and save the student's face embedding
+  encodeImage: (studentId: string, imageFile: File) => {
+    const formData = new FormData();
+    formData.append("image", imageFile);
+    return api(`/face/encode-image/${studentId}`, { method: "POST", body: formData, isFormData: true });
+  },
+
+  deleteEncoding: (studentId: string) =>
+    api(`/face/encoding/${studentId}`, { method: "DELETE" }),
+};
+
+// ─── Documents API ───────────────────────────────────────────────────────────
+
+export type DocumentType =
+  | "lesson_plan"
+  | "co_po_mapping"
+  | "lab_file"
+  | "nba_report"
+  | "naac_report"
+  | "course_file"
+  | "custom";
+
+export interface DocumentSection {
+  type: "heading1" | "heading2" | "paragraph" | "table" | "list";
+  content: string;
+  items?: string[];
+  rows?: string[][];
+}
+
+export interface GenerateDocumentParams {
+  documentType: DocumentType;
+  subject?: string;
+  subjectCode?: string;
+  topic?: string;
+  department?: string;
+  year?: string;
+  semester?: string;
+  courseOutcomes?: string;
+  programOutcomes?: string;
+  customPrompt?: string;
+  institution?: string;
+  files?: File[];
+}
+
+export const documentsApi = {
+  generate: async (params: GenerateDocumentParams): Promise<ApiResponse<{ sections: DocumentSection[]; title: string }>> => {
+    const formData = new FormData();
+    Object.entries(params).forEach(([key, value]) => {
+      if (key !== "files" && value !== undefined && value !== "") {
+        formData.append(key, value as string);
+      }
+    });
+    if (params.files?.length) {
+      params.files.forEach((f) => formData.append("files", f));
+    }
+    return api<{ sections: DocumentSection[]; title: string }>("/documents/generate", {
+      method: "POST",
+      body: formData,
+      isFormData: true,
+    });
+  },
+
+  downloadDocx: async (sections: DocumentSection[], title: string): Promise<void> => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const res = await fetch(`${API_URL}/documents/download/docx`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ sections, title }),
+    });
+    if (!res.ok) throw new Error("Failed to generate DOCX");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/\s+/g, "_")}.docx`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  downloadPdf: async (sections: DocumentSection[], title: string): Promise<void> => {
+    const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+    const res = await fetch(`${API_URL}/documents/download/pdf`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ sections, title }),
+    });
+    if (!res.ok) throw new Error("Failed to generate PDF");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${title.replace(/\s+/g, "_")}.pdf`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
 };
 
 // General endpoints
@@ -257,6 +379,8 @@ export interface User {
   designation: string;
   department_id?: string;
   phone?: string;
+  specialization?: string;
+  profile_image_url?: string;
 }
 
 export interface RegisterData {
@@ -266,6 +390,7 @@ export interface RegisterData {
   phone?: string;
   department_id?: string;
   designation?: string;
+  specialization?: string;
 }
 
 export interface UpdateProfileData {
@@ -273,6 +398,7 @@ export interface UpdateProfileData {
   phone?: string;
   designation?: string;
   department_id?: string;
+  status?: string;
 }
 
 export interface ChangePasswordData {
@@ -315,7 +441,9 @@ export interface StudentFilters {
   search?: string;
   class_id?: string;
   year?: number;
+  semester?: number;
   department_id?: string;
+  specialization?: string;
 }
 
 export interface CreateStudentData {
@@ -339,6 +467,8 @@ export interface Course {
   type: "lecture" | "tutorial" | "lab" | "mooc" | "elective";
   department_id: string;
   semester: number;
+  year: number;
+  class_id?: string;
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -362,6 +492,8 @@ export interface CreateCourseData {
   type: "lecture" | "tutorial" | "lab" | "mooc" | "elective";
   department_id: string;
   semester: number;
+  year: number;
+  class_id?: string;
 }
 
 export interface CourseCodeParams {
@@ -436,6 +568,7 @@ export interface DashboardStats {
     id: string;
     name: string;
     roll_number: string;
+    profile_image_url?: string;
     created_at: string;
   }>;
   recentCourses: Array<{
@@ -444,6 +577,14 @@ export interface DashboardStats {
     name: string;
     created_at: string;
   }>;
+}
+
+export interface FaceEncoding {
+  id: string;
+  name: string;
+  roll_number: string;
+  face_encoding: number[];
+  profile_image_url?: string;
 }
 
 export interface SystemInfo {
@@ -479,10 +620,111 @@ export interface SystemInfo {
   };
 }
 
-export interface FaceEncoding {
-  id: string;
-  name: string;
-  roll_number: string;
-  face_encoding: number[];
-  profile_image_url?: string;
+// ─── Activities Tracker API ───────────────────────────────────────────────────
+
+export interface ActivityRecord {
+  id?: string;
+  session_id?: string;
+  assignment_id?: string;
+  task_id?: string;
+  student_id: string;
+  status: 'present' | 'absent' | 'submitted' | 'missing' | 'late';
+  notes?: string;
+  marks_attained?: number;
+  grade?: string;
+  file_url?: string;
+  feedback?: string;
+  verification_status?: string;
+  submitted_at?: string;
+  created_at?: string;
 }
+
+export interface Activity {
+  id: string;
+  teacher_id: string;
+  course_id: string;
+  title: string;
+  type: 'attendance' | 'assignment' | 'document';
+  date: string;
+  created_at: string;
+  // Specialized fields
+  question_file_url?: string;
+  max_marks?: number;
+  due_date?: string;
+  duration?: number;
+  time_range?: string;
+  description?: string;
+  // Included records/submissions
+  attendance_records?: ActivityRecord[];
+  assignment_submissions?: ActivityRecord[];
+  document_submissions?: ActivityRecord[];
+}
+
+export interface CreateActivityData {
+  course_id: string;
+  title: string;
+  type: 'attendance' | 'assignment' | 'document';
+  date: string;
+  records: ActivityRecord[];
+  max_marks?: number;
+  due_date?: string;
+  duration?: number;
+  time_range?: string;
+}
+
+export const activitiesApi = {
+  getAll: (courseId?: string) => {
+    const query = courseId ? `?course_id=${courseId}` : '';
+    return api<Activity[]>(`/activities${query}`);
+  },
+  
+  create: (data: CreateActivityData | FormData) =>
+    api<Activity>("/activities", { 
+      method: "POST", 
+      body: data,
+      isFormData: data instanceof FormData 
+    }),
+    
+  getMonthlyAttendanceStats: () => api<any[]>("/activities/stats/attendance/monthly"),
+
+  getAttendanceHistory: (date: string, courseId?: string) => {
+    const query = new URLSearchParams({ date });
+    if (courseId) query.append("course_id", courseId);
+    return api<any[]>(`/activities/attendance/history?${query.toString()}`);
+  },
+};
+
+// ─── AI Evaluations API ───────────────────────────────────────────────────
+
+export interface Evaluation {
+  id: string;
+  student_id: string;
+  activity_id: string;
+  type: 'assignment' | 'document';
+  grade: string;
+  marks_attained?: number;
+  file_name: string;
+  created_at: string;
+  activities?: { title: string; max_marks?: number };
+}
+
+export const evaluationsApi = {
+  evaluate: (formData: FormData) =>
+    api<Evaluation>("/evaluations/evaluate", { 
+      method: "POST", 
+      body: formData,
+      isFormData: true
+    }),
+
+  getForStudent: (studentId: string) =>
+    api<Evaluation[]>(`/evaluations/student/${studentId}`),
+
+  getForActivity: (activityId: string) =>
+    api<Evaluation[]>(`/evaluations/activity/${activityId}`),
+
+  update: (id: string, data: { grade?: string; marks_attained?: number }) =>
+    api<Evaluation>(`/evaluations/${id}`, {
+      method: "PATCH",
+      body: data
+    }),
+};
