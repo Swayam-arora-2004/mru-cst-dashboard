@@ -425,7 +425,10 @@ router.post('/bulk', authenticate, async (req: AuthRequest, res: Response) => {
         year: parseInt(s.year) || null,
         semester: parseInt(s.semester) || null,
         profile_image_url: toDirectImageUrl(s.photos || s.profile_image_url || null),
-        specialization: s.specialization || null
+        specialization:
+          typeof s.specialization === 'string' && s.specialization.trim().length > 0
+            ? s.specialization.trim()
+            : 'N/A'
       });
     });
 
