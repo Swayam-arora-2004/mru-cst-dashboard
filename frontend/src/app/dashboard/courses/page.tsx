@@ -181,18 +181,13 @@ const CourseForm = ({
           { value: "4", label: "4th Year" },
         ]}
         value={formData.year}
-        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: any) => ({ ...prev, year: e.target.value }))}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) =>
+          setFormData((prev: any) => ({ ...prev, year: e.target.value }))
+        }
         required
       />
-      <Select
-        label="Class"
-        placeholder="Select class"
-        options={classes.map((c) => ({ value: c.id, label: c.name }))}
-        value={formData.class_id}
-        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: any) => ({ ...prev, class_id: e.target.value }))}
-      />
     </div>
-    <div className="grid grid-cols-2 gap-4">
+    <div className="grid grid-cols-1 gap-4">
       <Select
         label="Department"
         placeholder="Select department"
@@ -203,6 +198,8 @@ const CourseForm = ({
         }
         required
       />
+    </div>
+    <div className="grid grid-cols-1 gap-4">
       <Select
         label="Semester"
         placeholder="Select semester"
@@ -270,7 +267,6 @@ export default function CoursesPage() {
     department_id: "",
     semester: "",
     year: "",
-    class_id: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -390,7 +386,6 @@ export default function CoursesPage() {
         department_id: formData.department_id,
         semester,
         year,
-        class_id: formData.class_id || undefined,
       });
 
       if (response.success) {
@@ -437,7 +432,6 @@ export default function CoursesPage() {
         department_id: formData.department_id,
         semester,
         year,
-        class_id: formData.class_id || undefined,
       });
 
       if (response.success) {
@@ -521,7 +515,6 @@ export default function CoursesPage() {
       department_id: "",
       semester: "",
       year: "",
-      class_id: "",
     });
     setSelectedCourse(null);
     setCodeValidation(null);
@@ -537,7 +530,6 @@ export default function CoursesPage() {
       department_id: course.department_id,
       semester: course.semester.toString(),
       year: course.year?.toString() || "",
-      class_id: course.class_id || "",
     });
     setIsEditModalOpen(true);
   };

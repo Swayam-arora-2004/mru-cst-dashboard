@@ -25,7 +25,20 @@ import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuthStore } from "@/store/authStore";
-import { generalApi, authApi, type SystemInfo, type UserPreferences } from "@/lib/api";
+import { generalApi, authApi, notificationsApi, type SystemInfo, type UserPreferences } from "@/lib/api";
+
+const VAPID_PUBLIC_KEY = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY || "BF7X_R5G...";
+
+function urlBase64ToUint8Array(base64String: string) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = window.atob(base64);
+  const outputArray = new Uint8Array(rawData.length);
+  for (let i = 0; i < rawData.length; ++i) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
 
 type SettingsTab = "profile" | "security" | "preferences" | "system";
 
@@ -38,6 +51,7 @@ export default function SettingsPage() {
   const [isLoadingProfile, setIsLoadingProfile] = useState(false);
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [isLoadingPreferences, setIsLoadingPreferences] = useState(false);
+  const [isTestingNotifications, setIsTestingNotifications] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [departments, setDepartments] = useState<Array<{ id: string; code: string; name: string }>>([]);
 
@@ -645,6 +659,38 @@ export default function SettingsPage() {
                         <p className="text-sm text-zinc-500">
                           Receive push notifications in browser
                         </p>
+                        <button 
+                          onClick={async () => {
+                            try {
+                              if (!('serviceWorker' in navigator)) {
+                                toast.error("Browser does not support notifications");
+                                return;
+                              }
+                              
+                              const permission = await Notification.requestPermission();
+                              if (permission !== 'granted') {
+                                toast.error("Permission denied for notifications");
+                                return;
+                              }
+
+                              const registration = await navigator.serviceWorker.ready;
+                              const subscription = await registration.pushManager.subscribe({
+                                userVisibleOnly: true,
+                                applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+                              });
+
+                              await notificationsApi.subscribe(subscription);
+                              toast.success("Successfully subscribed to push notifications");
+                              setPreferences(p => ({ ...p, pushNotifications: true }));
+                            } catch (err: any) {
+                              console.error(err);
+                              toast.error("Push subscription failed: " + err.message);
+                            }
+                          }}
+                          className="text-xs text-blue-500 hover:underline mt-1 block"
+                        >
+                          {preferences.pushNotifications ? "Reset/Update Subscription" : "Enable Push on this Device"}
+                        </button>
                       </div>
                       <div
                         className={`w-12 h-6 rounded-full transition-colors relative cursor-pointer ${
@@ -701,7 +747,31 @@ export default function SettingsPage() {
                       </div>
                     </label>
 
-                    <div className="flex justify-end pt-4">
+                    <div className="flex justify-between items-center pt-4 border-t border-border/10">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={async () => {
+                          setIsTestingNotifications(true);
+                          try {
+                            const res = await notificationsApi.test();
+                            if (res.success) {
+                              toast.success("Test signals dispatched! Check your email and browser alerts.");
+                            } else {
+                              toast.error(res.error || "Failed to trigger test.");
+                            }
+                          } catch (err: any) {
+                            toast.error(err.message || "Network error during test.");
+                          } finally {
+                            setIsTestingNotifications(false);
+                          }
+                        }}
+                        isLoading={isTestingNotifications}
+                      >
+                        <Bell className="h-4 w-4 mr-2" />
+                        Trigger System Test
+                      </Button>
+
                       <Button
                         onClick={handlePreferencesSave}
                         isLoading={isLoading}

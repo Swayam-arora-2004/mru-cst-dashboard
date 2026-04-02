@@ -4,6 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getSupabaseAdminClient } from '../lib/supabase';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest, ApiResponse } from '../types';
+import { NotificationService } from '../lib/notifications';
 import logger from '../lib/logger';
 
 const router = Router();
@@ -94,8 +95,8 @@ router.get('/stats/attendance/monthly', authenticate, async (req: AuthRequest, r
 router.get('/attendance/history', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const supabase = getSupabaseAdminClient();
-    const { date, course_id } = req.query;
-
+    const { date, course_id, year, semester, class_id, time_range } = req.query;
+    
     if (!date) {
       res.status(400).json({ success: false, error: 'Date is required' });
       return;
@@ -109,6 +110,22 @@ router.get('/attendance/history', authenticate, async (req: AuthRequest, res: Re
 
     if (course_id) {
       query = query.eq('course_id', course_id);
+    }
+    
+    if (year) {
+      query = query.eq('year', parseInt(year as string));
+    }
+    
+    if (semester) {
+      query = query.eq('semester', parseInt(semester as string));
+    }
+    
+    if (class_id) {
+      query = query.eq('class_id', class_id);
+    }
+
+    if (time_range) {
+      query = query.ilike('time_range', `%${time_range}%`);
     }
 
     const { data: sessions, error } = await query;
@@ -190,7 +207,7 @@ router.post(
       
       const records = JSON.parse(recordsStr || '[]');
       
-      if (!title || !type || !course_id) {
+      if (!title || !type || (type !== 'document' && !course_id)) {
         res.status(400).json({ success: false, error: 'Missing required activity fields' });
         return;
       }
@@ -239,14 +256,17 @@ router.post(
       }
 
       // 3. Create parent record
+      const { department_id, year, semester, class_id } = req.body;
       const parentData: any = {
         teacher_id: req.user!.id,
-        course_id,
+        course_id: type === 'document' ? (course_id || null) : course_id,
         date: date || new Date().toISOString().split('T')[0],
+        department_id: department_id || null,
+        year: parseInt(year) || null,
+        semester: parseInt(semester) || null,
+        class_id: class_id || null,
       };
 
-      // Only add title if it's not attendance (attendance title handled by date or table structure)
-      // Actually, we'll keep title for all if the table supports it for better searchability.
       if (title) parentData.title = title;
 
       if (type === 'attendance') {
@@ -267,26 +287,85 @@ router.post(
         .single();
 
       if (activityError) {
-        console.error('PARENT_INSERT_ERROR:', activityError.message, activityError.details, 'Payload:', parentData);
+        console.error('SPECIFIC_TABLE_INSERT_ERROR:', activityError.message, activityError.details, 'Payload:', parentData);
         throw activityError;
       }
 
-      // 4. Create child records securely
-      const mappedRecords = records.map((r: any) => ({
-        [recordForeignKey]: activity.id,
-        student_id: r.student_id,
-        status: r.status,
-        notes: r.notes || null,
-        ...(type === 'assignment' ? { marks_attained: r.marks_attained || null, grade: r.grade || null } : {})
-      }));
+      // 3.5 [MASTER SYNC] Mirror the record in the 'activities' table to satisfy evaluations FK
+      const masterActivityData = {
+        id: activity.id,
+        teacher_id: req.user!.id,
+        course_id: parentData.course_id,
+        title: parentData.title,
+        type: type,
+        date: parentData.date,
+        max_marks: parentData.max_marks || null,
+        due_date: parentData.due_date || null,
+        question_file_url: parentData.question_file_url || null
+      };
 
-      const { error: recordsError } = await supabase
-        .from(recordsTable)
-        .insert(mappedRecords);
+      const { error: masterError } = await supabase
+        .from('activities')
+        .insert(masterActivityData);
 
-      if (recordsError) {
-        await supabase.from(parentTable).delete().eq('id', activity.id);
-        throw recordsError;
+      if (masterError) {
+        logger.error('MASTER_ACTIVITY_SYNC_ERROR:', masterError);
+        // We warn but don't fail, though it will break evaluations for this activity
+      }
+
+      // 🔔 [NOTIFICATION TRIGGER]
+      if (type === 'assignment' || type === 'document') {
+        (async () => {
+          try {
+            const { data: students } = await supabase
+              .from('students')
+              .select('id')
+              .eq('class_id', class_id);
+
+            if (students && students.length > 0) {
+              const notificationPayload = {
+                title: `New ${type.charAt(0).toUpperCase() + type.slice(1)}: ${title}`,
+                body: `A new activity has been posted. Due: ${due_date ? new Date(due_date).toLocaleString() : 'No deadline'}.`,
+                emailHtml: `
+                  <div style="font-family: sans-serif; padding: 20px;">
+                    <h2 style="color: #2563eb;">New Academic Activity</h2>
+                    <p>Hello Student, a new <strong>${type}</strong> has been assigned to your class.</p>
+                    <div style="background: #f3f4f6; padding: 15px; border-radius: 8px;">
+                      <p><strong>Title:</strong> ${title}</p>
+                      <p><strong>Deadline:</strong> ${due_date ? new Date(due_date).toLocaleString() : 'Flexible'}</p>
+                    </div>
+                    <p style="margin-top: 20px;">Log in to your dashboard to view details and submit.</p>
+                  </div>
+                `
+              };
+
+              await Promise.allSettled(
+                students.map(s => NotificationService.notifyUser(s.id, notificationPayload))
+              );
+            }
+          } catch (nErr) {
+            logger.error('NOTIFICATION_DISPATCH_BG_ERROR:', nErr);
+          }
+        })();
+      }
+
+      // 4. Create child records securely - ONLY for attendance
+      if (type === 'attendance') {
+        const mappedRecords = records.map((r: any) => ({
+          [recordForeignKey]: activity.id,
+          student_id: r.student_id,
+          status: r.status,
+          notes: r.notes || null,
+        }));
+
+        const { error: recordsError } = await supabase
+          .from(recordsTable)
+          .insert(mappedRecords);
+
+        if (recordsError) {
+          await supabase.from(parentTable).delete().eq('id', activity.id);
+          throw recordsError;
+        }
       }
 
       res.status(201).json({
@@ -300,6 +379,63 @@ router.post(
       success: false, 
       error: `Failed to save activity records: ${err.message || 'Unknown database error'}` 
     });
+  }
+});
+
+// UPDATE Activity (Due Dates, Titles, Session Metadata)
+router.patch('/:id', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { title, date, due_date, time_range } = req.body;
+    const supabase = getSupabaseAdminClient();
+
+    // 1. Identify activity type and ownership
+    const { data: activity, error: fetchError } = await supabase
+      .from('activities')
+      .select('*')
+      .eq('id', id)
+      .eq('teacher_id', req.user!.id)
+      .single();
+
+    if (fetchError || !activity) {
+      res.status(404).json({ success: false, error: 'Activity not found or unauthorized' });
+      return;
+    }
+
+    const type = activity.type;
+    const updateData: any = {};
+    if (title !== undefined) updateData.title = title;
+    if (date !== undefined) updateData.date = date;
+    if (due_date !== undefined) updateData.due_date = due_date;
+    if (time_range !== undefined) updateData.time_range = time_range;
+
+    // 2. Synchronized Update: Master & Child Tables
+    const parentTableMap: Record<string, string> = {
+      'assignment': 'assignments',
+      'document': 'document_tasks',
+      'attendance': 'attendance_sessions'
+    };
+
+    const targetTable = parentTableMap[type];
+    
+    // We update both in parallel for efficiency
+    const [masterUpdate, childUpdate] = await Promise.all([
+      supabase.from('activities').update(updateData).eq('id', id),
+      targetTable ? supabase.from(targetTable).update(updateData).eq('id', id) : Promise.resolve({ error: null })
+    ]);
+
+    if (masterUpdate.error || (childUpdate && childUpdate.error)) {
+      throw new Error(masterUpdate.error?.message || (childUpdate.error as any)?.message);
+    }
+
+    res.status(200).json({
+      success: true,
+      data: { ...activity, ...updateData },
+      message: 'Activity updated successfully'
+    });
+  } catch (err: any) {
+    logger.error('Update activity error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
 });
 

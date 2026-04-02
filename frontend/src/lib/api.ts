@@ -33,13 +33,26 @@ export async function api<T>(
 ): Promise<ApiResponse<T>> {
   const { method = "GET", body, headers = {}, isFormData = false } = options;
 
-  const token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+  let token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
+
+  // Fallback: Check Zustand's persisted storage if direct token is null
+  if (!token && typeof window !== "undefined") {
+    const authStorage = localStorage.getItem("auth-storage");
+    if (authStorage) {
+      try {
+        const parsed = JSON.parse(authStorage);
+        token = parsed?.state?.token || null;
+      } catch (e) {
+        console.error("Failed to parse auth-storage", e);
+      }
+    }
+  }
 
   const requestHeaders: Record<string, string> = {
     ...headers,
   };
 
-  if (token) {
+  if (token && token !== "undefined" && token !== "null") {
     requestHeaders.Authorization = `Bearer ${token}`;
   }
 
@@ -178,6 +191,7 @@ export const coursesApi = {
     if (params?.type) query.set("type", params.type);
     if (params?.department_id) query.set("department_id", params.department_id);
     if (params?.semester) query.set("semester", params.semester.toString());
+    if (params?.year) query.set("year", params.year.toString());
     return api<Course[]>(`/courses?${query.toString()}`);
   },
   
@@ -482,6 +496,7 @@ export interface CourseFilters {
   type?: string;
   department_id?: string;
   semester?: number;
+  year?: number;
 }
 
 export interface CreateCourseData {
@@ -647,6 +662,11 @@ export interface Activity {
   type: 'attendance' | 'assignment' | 'document';
   date: string;
   created_at: string;
+  // Administrative context
+  year?: number;
+  semester?: number;
+  class_id?: string;
+  department_id?: string;
   // Specialized fields
   question_file_url?: string;
   max_marks?: number;
@@ -687,11 +707,26 @@ export const activitiesApi = {
     
   getMonthlyAttendanceStats: () => api<any[]>("/activities/stats/attendance/monthly"),
 
-  getAttendanceHistory: (date: string, courseId?: string) => {
+  getAttendanceHistory: (date: string, courseId?: string, year?: string, semester?: string, classId?: string, timeRange?: string) => {
     const query = new URLSearchParams({ date });
     if (courseId) query.append("course_id", courseId);
+    if (year) query.append("year", year);
+    if (semester) query.append("semester", semester);
+    if (classId) query.append("class_id", classId);
+    if (timeRange) query.append("time_range", timeRange);
     return api<any[]>(`/activities/attendance/history?${query.toString()}`);
   },
+
+  update: (id: string, data: Partial<CreateActivityData>) =>
+    api<Activity>(`/activities/${id}`, {
+      method: "PATCH",
+      body: data
+    }),
+
+  delete: (id: string) =>
+    api<{ success: true }>(`/activities/${id}`, {
+      method: "DELETE"
+    }),
 };
 
 // ─── AI Evaluations API ───────────────────────────────────────────────────
@@ -700,10 +735,13 @@ export interface Evaluation {
   id: string;
   student_id: string;
   activity_id: string;
+  teacher_id?: string;
   type: 'assignment' | 'document';
   grade: string;
-  marks_attained?: number;
+  marks_attained: number | null;
   file_name: string;
+  file_url?: string;
+  source?: 'ai' | 'system'; 
   created_at: string;
   activities?: { title: string; max_marks?: number };
 }
@@ -727,4 +765,19 @@ export const evaluationsApi = {
       method: "PATCH",
       body: data
     }),
+
+  delete: (id: string) =>
+    api<{ success: true }>(`/evaluations/${id}`, {
+      method: "DELETE"
+    }),
+};
+// ─── Notifications API ────────────────────────────────────────────────────────
+export const notificationsApi = {
+  subscribe: (subscription: any) =>
+    api<{ message: string }>("/notifications/subscribe", {
+      method: "POST",
+      body: { subscription },
+    }),
+
+  test: () => api<{ email: any; push: any }>("/notifications/test", { method: "POST" }),
 };

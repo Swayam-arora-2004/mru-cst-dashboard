@@ -21,7 +21,9 @@ import generalRoutes from './routes/general';
 import documentRoutes from './routes/documents';
 import activitiesRoutes from './routes/activities';
 import evaluationsRoutes from './routes/evaluations';
+import notificationsRoutes from './routes/notifications';
 import { loadModels } from './lib/faceRecognition';
+import { initCronJobs } from './lib/cron';
 
 // Validate environment variables
 validateConfig();
@@ -116,6 +118,7 @@ app.use('/api/face', faceRecognitionRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/activities', activitiesRoutes);
 app.use('/api/evaluations', evaluationsRoutes);
+app.use('/api/notifications', notificationsRoutes);
 app.use('/api', generalRoutes);
 
 // Error handling
@@ -154,6 +157,9 @@ app.listen(PORT, () => {
     logger.warn('Face recognition models could not be loaded:', err.message);
     logger.warn('Face recognition features will be unavailable until models are loaded.');
   });
+
+  // ⏰ Initialize Automated Schedulers (Weekly Reports, etc.)
+  initCronJobs();
 });
 
 export default app;

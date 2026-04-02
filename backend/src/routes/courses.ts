@@ -17,6 +17,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
     const type = req.query.type as string;
     const departmentId = req.query.department_id as string;
     const semester = req.query.semester as string;
+    const year = req.query.year as string;
     const isActive = req.query.is_active as string;
 
     const offset = (page - 1) * limit;
@@ -24,16 +25,29 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
 
     let query = supabase
       .from('courses')
-      .select('*, departments(*)', { count: 'exact' })
-      .eq('teacher_id', req.user!.id);
+      .select('*, departments(*)', { count: 'exact' });
+
+    // Apply strict isolation: 
+    // Non-admin users only see courses where they are the assigned teacher.
+    if (req.user?.role !== 'admin') {
+      query = query.eq('teacher_id', req.user!.id);
+    }
+    
+    // Additional filters
+    if (departmentId) {
+      query = query.eq('department_id', departmentId);
+    }
 
     if (search) {
       query = query.or(`name.ilike.%${search}%,code.ilike.%${search}%`);
     }
     if (type) query = query.eq('type', type);
     if (departmentId) query = query.eq('department_id', departmentId);
+    if (year) query = query.eq('year', parseInt(year));
     if (semester) query = query.eq('semester', parseInt(semester));
     if (isActive !== undefined) query = query.eq('is_active', isActive === 'true');
+
+    logger.info(`Fetching courses with filters: teacher=${req.user!.id}, dept=${departmentId}, year=${year}, sem=${semester}`);
 
     const { data: courses, count, error } = await query
       .order('code')

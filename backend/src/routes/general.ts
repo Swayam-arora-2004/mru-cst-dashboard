@@ -86,9 +86,7 @@ router.get('/classes', authenticate, async (req: AuthRequest, res: Response): Pr
       .from('classes')
       .select('*, departments(*)');
 
-    if (departmentId) query = query.eq('department_id', departmentId);
-    if (year) query = query.eq('year', parseInt(year));
-    if (semester) query = query.eq('semester', parseInt(semester));
+    logger.info(`Fetching classes (universal mode)`);
 
     const { data: classes, error } = await query.order('name');
 
