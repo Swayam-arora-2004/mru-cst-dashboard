@@ -30,6 +30,19 @@ const upload = multer({
   },
 });
 
+// Render/free instances have limited memory; keep bulk photo batches small.
+const bulkPhotoUpload = multer({
+  storage,
+  limits: { fileSize: config.upload.maxFileSize, files: 10 },
+  fileFilter: (_req, file, cb) => {
+    if (config.upload.allowedFileTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only JPEG, PNG, and GIF allowed.'));
+    }
+  },
+});
+
 /* =========================
    GET ALL STUDENTS (PAGINATED)
 ========================= */
@@ -481,7 +494,7 @@ router.post('/bulk', authenticate, async (req: AuthRequest, res: Response) => {
    BULK PHOTO UPLOAD
 ========================= */
 
-router.post('/bulk-photos', authenticate, upload.array('photos', 50), async (req: AuthRequest, res: Response) => {
+router.post('/bulk-photos', authenticate, bulkPhotoUpload.array('photos', 10), async (req: AuthRequest, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     if (!files || files.length === 0) {
@@ -495,9 +508,6 @@ router.post('/bulk-photos', authenticate, upload.array('photos', 50), async (req
       failCount: 0,
       errors: [] as string[]
     };
-
-    // Load AI models once
-    if (!isModelsLoaded()) await loadModels();
 
     for (const file of files) {
       try {
@@ -536,15 +546,11 @@ router.post('/bulk-photos', authenticate, upload.array('photos', 50), async (req
           .from('student-photos')
           .getPublicUrl(filePath);
 
-        // 4. Generate AI Face Encoding
-        const encoding = await detectAndEncode(file.buffer);
-
-        // 5. Update Student
+        // 4. Update Student (image upload only for production stability)
         const { error: updateError } = await supabase
           .from('students')
           .update({
             profile_image_url: publicUrl,
-            face_encoding: encoding ? Array.from(encoding) : null,
             updated_at: new Date().toISOString()
           })
           .eq('id', student.id);
@@ -560,7 +566,7 @@ router.post('/bulk-photos', authenticate, upload.array('photos', 50), async (req
 
     res.status(200).json({
       success: true,
-      message: `Processed ${files.length} photos. ${results.successCount} succeeded, ${results.failCount} failed.`,
+      message: `Processed ${files.length} photos. ${results.successCount} succeeded, ${results.failCount} failed. Face encodings were skipped to prevent server restarts on low-memory hosting.`,
       results
     });
   } catch (error: any) {
