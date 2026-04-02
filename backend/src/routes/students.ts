@@ -468,7 +468,12 @@ router.post('/bulk', authenticate, async (req: AuthRequest, res: Response) => {
                   .from('students')
                   .update({ face_encoding: Array.from(encoding) })
                   .eq('roll_number', student.roll_number);
+                
+                logger.debug(`Successfully encoded face for ${student.roll_number}`);
               }
+
+              // 5. Add a small breather (500ms) to avoid CPU/RAM spikes on Render's 512MB tier
+              await new Promise(r => setTimeout(r, 500));
             } catch (err) {
               logger.error(`Failed to encode face for ${student.roll_number}:`, err);
             }

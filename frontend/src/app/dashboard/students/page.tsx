@@ -351,7 +351,8 @@ export default function StudentsPage() {
             phone: find(['Phone no', 'Phone No', 'phone', 'Phone Number', 'Phone']),
             year: find(['Year', 'year', 'Batch']),
             semester: find(['Semester', 'semester', 'Sem']),
-            department_name: find(['Department', 'department', 'Dept', 'Dept.'])
+            department_name: find(['Department', 'department', 'Dept', 'Dept.']),
+            specialization: find(['Specialization', 'Spec', 'Branch', 'Specialisation', 'Stream', 'Focus'])
           };
         }).filter(s => s.roll_number && s.name); // Filter out empty rows
 
@@ -1018,7 +1019,6 @@ export default function StudentsPage() {
               <p className="font-medium text-blue-900 dark:text-blue-200">Import Guidelines</p>
               <ul className="list-disc list-inside text-blue-800/80 dark:text-blue-300/80 space-y-1">
                 <li><strong>Class Mapping</strong>: Short names like "A" are auto-mapped to "Section A".</li>
-                <li><strong>Student Photos</strong>: Embedded images in Excel cells cannot be imported. Please use public <strong>URL links</strong> in the Photo column.</li>
               </ul>
             </div>
           </div>
@@ -1027,7 +1027,7 @@ export default function StudentsPage() {
             <Upload className="h-10 w-10 text-zinc-400 mx-auto" />
             <div>
               <p className="font-medium">Upload Excel File</p>
-              <p className="text-sm text-muted-foreground">Select your .xlsx file (8 columns)</p>
+              <p className="text-sm text-muted-foreground">Select your .xlsx file (9 columns)</p>
             </div>
             <Input
               type="file"

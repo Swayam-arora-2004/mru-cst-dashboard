@@ -320,34 +320,57 @@ function CourseSelector({
 
 // ─── Document Preview Renderer ────────────────────────────────────────────────
 
+// Helper to safely render text even if AI returns an object instead of a string
+function renderText(text: any): React.ReactNode {
+  if (text === null || text === undefined) return null;
+  if (typeof text === "string" || typeof text === "number") return text;
+  if (typeof text === "object") {
+    // If it's a section object (happens sometimes with Gemini hallucinations)
+    if (text.content && typeof text.content === "string") return text.content;
+    // Flatten arrays
+    if (Array.isArray(text)) return text.map((item, i) => <span key={i}>{renderText(item)} </span>);
+    // Last resort
+    try {
+      return JSON.stringify(text);
+    } catch {
+      return "[Object]";
+    }
+  }
+  return String(text);
+}
+
 function DocumentPreview({ sections }: { sections: DocumentSection[] }) {
+  if (!Array.isArray(sections)) return null;
+
   return (
     <div className="prose max-w-none font-serif text-foreground">
       {sections.map((section, i) => {
+        if (!section || typeof section !== "object") return null;
+
         switch (section.type) {
           case "heading1":
             return (
               <h1 key={i} className="text-[14pt] font-bold text-center mt-6 mb-4 leading-loose border-b pb-2">
-                {section.content}
+                {renderText(section.content)}
               </h1>
             );
           case "heading2":
             return (
               <h2 key={i} className="text-[12pt] font-bold mt-5 mb-3 leading-[1.5]">
-                {section.content}
+                {renderText(section.content)}
               </h2>
             );
           case "paragraph":
             return (
               <p key={i} className="text-[12pt] mb-2 leading-relaxed">
-                {section.content}
+                {renderText(section.content)}
               </p>
             );
           case "list":
             return (
               <ul key={i} className="list-disc pl-6 mb-4 space-y-1">
-                {(section.items || []).map((item, j) => (
-                  <li key={j} className="text-[12pt]">{item}</li>
+                {(section.items || []).map((item: any, j: number) => (
+                  <li key={j} className="text-[12pt]">{renderText(item)}</li>
                 ))}
               </ul>
             );
@@ -359,19 +382,19 @@ function DocumentPreview({ sections }: { sections: DocumentSection[] }) {
                 <table className="w-full border-collapse text-[11pt]">
                   <thead>
                     <tr className="bg-zinc-800 dark:bg-zinc-700">
-                      {header.map((h, j) => (
+                      {(header || []).map((h: any, j: number) => (
                         <th key={j} className="border border-zinc-400 px-3 py-2 text-white font-bold text-center">
-                          {h}
+                          {renderText(h)}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {rows.map((row, ri) => (
+                    {rows.map((row: any[], ri: number) => (
                       <tr key={ri} className={ri % 2 === 0 ? "bg-muted/50" : ""}>
-                        {row.map((cell, ci) => (
+                        {(row || []).map((cell: any, ci: number) => (
                           <td key={ci} className="border border-border px-3 py-2 text-center">
-                            {cell}
+                            {renderText(cell)}
                           </td>
                         ))}
                       </tr>
@@ -466,7 +489,7 @@ export default function DocumentsPage() {
 
       if (result.success && result.data) {
         setGeneratedSections(result.data.sections);
-        setDocumentTitle(result.data.title);
+        setDocumentTitle(String(result.data.title || "Academic Document"));
         toast.success(`Document generated! ${result.data.sections.length} sections created.`);
       } else {
         toast.error(result.error || "Generation failed");

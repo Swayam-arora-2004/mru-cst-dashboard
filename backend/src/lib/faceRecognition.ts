@@ -13,7 +13,7 @@ let faceapi: typeof import('@vladmandic/face-api') | null = null;
 let modelsLoaded = false;
 let loadingPromise: Promise<void> | null = null;
 
-const MODELS_PATH = path.resolve(process.cwd(), 'models');
+
 
 // Euclidean distance between two face descriptors
 function euclideanDistance(a: Float32Array, b: Float32Array): number {
@@ -25,6 +25,9 @@ function euclideanDistance(a: Float32Array, b: Float32Array): number {
   return Math.sqrt(sum);
 }
 
+// Resolve Models Path with better fallback for Production (Render/Docker)
+const MODELS_PATH = path.resolve(process.cwd(), 'models');
+
 /**
  * Load all face recognition models. Safe to call multiple times — only loads once.
  */
@@ -34,37 +37,46 @@ export async function loadModels(): Promise<void> {
 
   loadingPromise = (async () => {
     try {
-      logger.info('🤖 Loading face recognition models...');
+      logger.info(`🤖 Starting face-recognition models from: ${MODELS_PATH}`);
+      
+      const fs = await import('fs');
+      if (!fs.existsSync(MODELS_PATH)) {
+        logger.error(`❌ Models directory NOT FOUND at ${MODELS_PATH}! Face AI will be disabled.`);
+        throw new Error(`Models directory not found at ${MODELS_PATH}`);
+      }
 
-      // Import canvas polyfill for Node.js
+      // Import canvas polyfill — essential for Node.js image processing
       const { createCanvas, Image } = await import('@napi-rs/canvas');
 
-      // Patch global with canvas so face-api can use it
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // Patch global for compatibility with legacy face-api expectations
       (globalThis as any).HTMLCanvasElement = createCanvas(1, 1).constructor;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       (globalThis as any).HTMLImageElement = Image;
 
       // Import face-api
       faceapi = await import('@vladmandic/face-api');
 
-      // Initialize Pure CPU backend instead of attempting to build native C++ TensorFlow graphs!
-      // This reduces cold-compile time from ~40 seconds down to EXACTLY 0.0 seconds!
+      // Force pure CPU backend — essential for stability on Render's Free-Tier (512MB RAM)
+      // Native TensorFlow (tfjs-node) binaries often OOM or fail to build in low-resource setups.
       await (faceapi as any).tf.setBackend('cpu');
       await (faceapi as any).tf.ready();
 
-      logger.info('✅ Face API CPU backend ready (Instant)');
+      logger.info('✅ Face API CPU backend initialized successfully');
 
-      // Load models from local files
+      // Attempt to load each network individually with clear logging
       await faceapi.nets.ssdMobilenetv1.loadFromDisk(MODELS_PATH);
+      logger.info('   ✔ ssdMobilenetv1 Loaded');
+      
       await faceapi.nets.faceLandmark68Net.loadFromDisk(MODELS_PATH);
+      logger.info('   ✔ faceLandmark68Net Loaded');
+      
       await faceapi.nets.faceRecognitionNet.loadFromDisk(MODELS_PATH);
+      logger.info('   ✔ faceRecognitionNet Loaded');
 
       modelsLoaded = true;
-      logger.info('✅ Face recognition models loaded successfully');
-    } catch (err) {
+      logger.info('⭐ Face recognition library fully operational on production server!');
+    } catch (err: any) {
       loadingPromise = null;
-      logger.error('❌ Failed to load face recognition models:', err);
+      logger.error('❌ Face AI critical failure during initialization:', err.message);
       throw err;
     }
   })();
@@ -81,6 +93,7 @@ export async function detectAndEncode(imageBuffer: Buffer): Promise<Float32Array
     throw new Error('Face recognition models not loaded. Call loadModels() first.');
   }
 
+  let tensor: any = null;
   try {
     // 1. Use Sharp to decode image to raw pixels (it's faster and more stable in Node)
     // @ts-ignore - faceapi.tf contains the tfjs instance
@@ -91,7 +104,7 @@ export async function detectAndEncode(imageBuffer: Buffer): Promise<Float32Array
       .toBuffer({ resolveWithObject: true });
     
     // Create tensor from raw pixel data
-    const tensor = tf.tensor3d(data, [info.height, info.width, 3], 'int32');
+    tensor = tf.tensor3d(data, [info.height, info.width, 3], 'int32');
 
     // 2. Detect face with landmarks and descriptor
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -99,9 +112,6 @@ export async function detectAndEncode(imageBuffer: Buffer): Promise<Float32Array
       .detectSingleFace(tensor, new (faceapi as any).SsdMobilenetv1Options({ minConfidence: 0.3 }))
       .withFaceLandmarks()
       .withFaceDescriptor();
-
-    // 3. Dispose tensor to free memory
-    tf.dispose(tensor);
 
     if (!detection) {
       logger.warn('No face detected in image');
@@ -112,6 +122,13 @@ export async function detectAndEncode(imageBuffer: Buffer): Promise<Float32Array
   } catch (err) {
     logger.error('Error encoding face:', err);
     throw err;
+  } finally {
+    // 3. Dispose tensor to free memory — CRITICAL for low-memory environments like Render
+    if (tensor) {
+      const tf = (faceapi as any).tf;
+      tf.dispose(tensor);
+      logger.debug('Tensor memory disposed');
+    }
   }
 }
 

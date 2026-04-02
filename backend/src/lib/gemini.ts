@@ -13,10 +13,19 @@ const getGenAI = (): GoogleGenerativeAI => {
 };
 
 const FALLBACK_MODELS = [
-  'gemini-1.5-flash',
-  'gemini-1.5-pro',
-  'gemini-2.0-flash-exp',
+  'gemini-2.5-flash',
+  'gemini-2.0-flash',
+  'gemini-1.5-flash-latest',
 ];
+
+const isModelNotFoundError = (err: unknown): boolean => {
+  const message = err instanceof Error ? err.message.toLowerCase() : String(err).toLowerCase();
+  return (
+    message.includes('404') &&
+    (message.includes('model') || message.includes('models/')) &&
+    (message.includes('not found') || message.includes('not supported'))
+  );
+};
 
 export interface CourseCodeSuggestion {
   code: string;
@@ -385,17 +394,36 @@ Example:
           .replace(/\s*```$/i, '')
           .trim();
 
-        const sections: DocumentSection[] = JSON.parse(clean);
+        const rawSections: DocumentSection[] = JSON.parse(clean);
 
-        if (!Array.isArray(sections) || sections.length === 0) {
+        if (!Array.isArray(rawSections) || rawSections.length === 0) {
           throw new Error('Empty or invalid response from AI model');
         }
 
-        logger.info(`✅ Document generated with ${modelName}: ${sections.length} sections`);
+        // ─── Sanitization ───────────────────────────────────────────────────
+        // AI sometimes nests objects or returns non-strings in content/items.
+        // This ensures the rest of the pipeline (DOCX, PDF, Frontend) is safe.
+        const sections: DocumentSection[] = rawSections.map((s) => ({
+          type: s.type || 'paragraph',
+          content: typeof s.content === 'object' ? JSON.stringify(s.content) : String(s.content || ''),
+          items: Array.isArray(s.items)
+            ? s.items.map((it) => (typeof it === 'object' ? JSON.stringify(it) : String(it)))
+            : undefined,
+          rows: Array.isArray(s.rows)
+            ? s.rows.map((row) =>
+                Array.isArray(row)
+                  ? row.map((cell) => (typeof cell === 'object' ? JSON.stringify(cell) : String(cell)))
+                  : []
+              )
+            : undefined,
+        })) as DocumentSection[];
+
+        logger.info(`✅ Document generated and sanitized with ${modelName}: ${sections.length} sections`);
         return sections;
       } catch (err: any) {
         const isRateLimit = err?.status === 429 || err?.statusText === 'Too Many Requests';
         const retryDelay = err?.errorDetails?.find((d: any) => d['@type']?.includes('RetryInfo'))?.retryDelay;
+        const modelNotFound = isModelNotFoundError(err);
 
         if (isRateLimit) {
           logger.warn(`Rate limit on ${modelName} (retry delay: ${retryDelay || 'unknown'}). Trying next model...`);
@@ -404,6 +432,12 @@ Example:
           );
           // Wait briefly before trying next model
           await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+
+        if (modelNotFound) {
+          logger.warn(`Model unavailable: ${modelName}. Trying next model...`);
+          lastError = err instanceof Error ? err : new Error(String(err));
           continue;
         }
 
@@ -508,6 +542,7 @@ TASK:
           return { ...evaluation, source: 'ai' };
         } catch (err: any) {
           const isRateLimit = err.message?.includes('429') || err.status === 429 || err.message?.toLowerCase().includes('too many requests') || err.message?.toLowerCase().includes('quota');
+          const modelNotFound = isModelNotFoundError(err);
           
           if (isRateLimit && retryCount < maxRetries) {
             retryCount++;
@@ -516,6 +551,11 @@ TASK:
             logger.warn(`AI Quota Busy for ${modelName}. Retrying in ${Math.round(delay/1000)}s...`);
             await new Promise(resolve => setTimeout(resolve, delay));
             continue;
+          }
+
+          if (modelNotFound) {
+            logger.warn(`Model unavailable for evaluation: ${modelName}. Switching model...`);
+            break;
           }
 
           logger.error(`AI Evaluation failure with ${modelName}:`, err.message);
