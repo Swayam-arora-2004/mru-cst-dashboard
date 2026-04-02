@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   Search, 
@@ -41,6 +41,7 @@ import {
   studentsApi, 
   activitiesApi, 
   evaluationsApi, 
+  notificationsApi, // Add this
   generalApi, // Correct API
   Student, 
   Course, 
@@ -162,7 +163,7 @@ export default function SubmissionsPage() {
               userVisibleOnly: true,
               applicationServerKey: 'BF7X_R5G6nU6uNoD0ZqVp8r7uK6Y-g3B8p9k2n' // Sample VAPID
             });
-            await api("/notifications/subscribe", { method: "POST", body: { subscription } });
+            await notificationsApi.subscribe(subscription);
           } catch (e) {
             console.warn('Push subscription failed:', e);
           }
@@ -173,7 +174,7 @@ export default function SubmissionsPage() {
   const handleTriggerTest = async () => {
     try {
       const toastId = toast.loading("Triggering free system alerts...");
-      const res = await api<{ email: any; push: any; report: any }>("/notifications/test", { method: "POST" });
+      const res = await notificationsApi.test();
       if (res.success) {
         toast.dismiss(toastId);
         toast.success("Push, Email & Weekly Report triggered!");
@@ -230,23 +231,26 @@ export default function SubmissionsPage() {
     }
   };
 
-  const filteredActivities = activities.filter(a => {
-    const isCorrectType = a.type === mode;
-    if (!isCorrectType) return false;
-    
-    // Core consistency check: Both assignment and document need class/year/semester context
-    if (a.year && a.year !== parseInt(selectedYear)) return false;
-    if (a.semester && a.semester !== parseInt(selectedSemester)) return false;
-    if (a.class_id && a.class_id !== selectedClass) return false;
+  const filteredActivities = useMemo(() => {
+    return activities.filter(a => {
+      const isCorrectType = a.type === mode;
+      if (!isCorrectType) return false;
+      
+      if (a.year && a.year !== parseInt(selectedYear)) return false;
+      if (a.semester && a.semester !== parseInt(selectedSemester)) return false;
+      if (a.class_id && a.class_id !== selectedClass) return false;
 
-    if (mode === 'assignment' && courseId && a.course_id !== courseId) return false;
-    
-    if (!a.due_date) return statusFilter === 'active';
-    const isPast = new Date(a.due_date) < new Date();
-    return statusFilter === 'active' ? !isPast : isPast;
-  });
+      if (mode === 'assignment' && courseId && a.course_id !== courseId) return false;
+      
+      if (!a.due_date) return statusFilter === 'active';
+      const isPast = new Date(a.due_date) < new Date();
+      return statusFilter === 'active' ? !isPast : isPast;
+    });
+  }, [activities, mode, selectedYear, selectedSemester, selectedClass, courseId, statusFilter]);
 
-  const currentActivity = filteredActivities.find(a => a.id === activityId) || filteredActivities[0];
+  const currentActivity = useMemo(() => {
+    return filteredActivities.find(a => a.id === activityId) || filteredActivities[0];
+  }, [filteredActivities, activityId]);
 
   useEffect(() => {
     if (filteredActivities.length > 0) {

@@ -46,7 +46,13 @@ router.get('/stats/attendance/monthly', authenticate, async (req: AuthRequest, r
       throw recordsError;
     }
 
-    // Aggregate by course
+    // Create a lookup map for records by session_id to avoid O(N*M) filtering
+    const recordsBySession = (records || []).reduce((acc: Record<string, any[]>, record) => {
+      if (!acc[record.session_id]) acc[record.session_id] = [];
+      acc[record.session_id].push(record);
+      return acc;
+    }, {});
+
     const statsMap: Record<string, any> = {};
 
     sessions.forEach(session => {
@@ -64,7 +70,7 @@ router.get('/stats/attendance/monthly', authenticate, async (req: AuthRequest, r
         };
       }
 
-      const sessionRecords = records?.filter(r => r.session_id === session.id) || [];
+      const sessionRecords = recordsBySession[session.id] || [];
       sessionRecords.forEach(record => {
         if (record.status === 'present') statsMap[courseId].present++;
         else if (record.status === 'absent') statsMap[courseId].absent++;
@@ -72,8 +78,8 @@ router.get('/stats/attendance/monthly', authenticate, async (req: AuthRequest, r
     });
 
     // Finalize and check for alerts (e.g., < 75% attendance)
-    const result = Object.values(statsMap).map(s => {
-      const total = s.present + s.absent;
+    const result = Object.values(statsMap).map((s: any) => {
+      const total = (s.present || 0) + (s.absent || 0);
       const percent = total > 0 ? (s.present / total) * 100 : 100;
       return {
         ...s,
@@ -159,32 +165,40 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
     const supabase = getSupabaseAdminClient();
     const courseId = req.query.course_id as string;
 
-    // Aggregate data from all three specialized parent tables
+    // Aggregate data using efficient database-level filtering by teacher_id
     const [attendanceRes, assignmentsRes, documentTasksRes] = await Promise.all([
-      supabase.from('attendance_sessions').select('*, attendance_records(*)'),
-      supabase.from('assignments').select('*, assignment_submissions(*)'),
-      supabase.from('document_tasks').select('*, document_submissions(*)')
+      supabase.from('attendance_sessions')
+        .select('*, attendance_records(*)')
+        .eq('teacher_id', req.user!.id)
+        .order('created_at', { ascending: false }),
+      supabase.from('assignments')
+        .select('*, assignment_submissions(*)')
+        .eq('teacher_id', req.user!.id)
+        .order('created_at', { ascending: false }),
+      supabase.from('document_tasks')
+        .select('*, document_submissions(*)')
+        .eq('teacher_id', req.user!.id)
+        .order('created_at', { ascending: false })
     ]);
 
-    // Map to a common Activity format for the frontend (backward compatible)
+    // Map to a common Activity format (backend handles the merging/sorting)
     const attendance = (attendanceRes.data || []).map(a => ({ 
       ...a, 
-      type: 'attendance', 
+      type: 'attendance' as const, 
       activity_records: a.attendance_records 
     }));
     const assignments = (assignmentsRes.data || []).map(a => ({ 
       ...a, 
-      type: 'assignment', 
+      type: 'assignment' as const, 
       activity_records: a.assignment_submissions 
     }));
     const documents = (documentTasksRes.data || []).map(a => ({ 
       ...a, 
-      type: 'document', 
+      type: 'document' as const, 
       activity_records: a.document_submissions 
     }));
 
     const activities = [...attendance, ...assignments, ...documents]
-      .filter(a => a.teacher_id === req.user!.id)
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     res.status(200).json({
