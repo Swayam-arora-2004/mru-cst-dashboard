@@ -96,7 +96,6 @@ export default function SubmissionsPage() {
 
   // Result state
   const [recentEvaluation, setRecentEvaluation] = useState<Evaluation | null>(null);
-  const [activityEvaluations, setActivityEvaluations] = useState<Record<string, Evaluation>>({});
 
   // View State
   const [mode, setMode] = useState<"assignment" | "document">("assignment");
@@ -330,10 +329,17 @@ export default function SubmissionsPage() {
     try {
       const res = await evaluationsApi.retry!(evaluationId);
       if (res.success && res.data) {
-        setActivityEvaluations(prev => ({
-          ...prev,
-          [studentId]: res.data!
-        }));
+        setActivityEvaluations(prev => {
+          const studentEvals = prev[studentId] || [];
+          // Replace the specific evaluated item if ID matches, or prepend
+          const exists = studentEvals.findIndex(e => e.id === evaluationId);
+          if (exists !== -1) {
+            const next = [...studentEvals];
+            next[exists] = res.data!;
+            return { ...prev, [studentId]: next };
+          }
+          return { ...prev, [studentId]: [res.data!, ...studentEvals] };
+        });
         toast.success(res.message || "AI re-evaluation completed.");
       }
     } catch (err: any) {
@@ -414,9 +420,14 @@ export default function SubmissionsPage() {
       if (res.success) {
         toast.success("Submission deleted successfully");
         setActivityEvaluations(prev => {
-          const next = { ...prev };
-          delete next[studentId];
-          return next;
+          const studentEvals = prev[studentId] || [];
+          const filtered = studentEvals.filter(e => e.id !== evaluationId);
+          if (filtered.length === 0) {
+            const next = { ...prev };
+            delete next[studentId];
+            return next;
+          }
+          return { ...prev, [studentId]: filtered };
         });
         if (recentEvaluation?.id === evaluationId) setRecentEvaluation(null);
       }
