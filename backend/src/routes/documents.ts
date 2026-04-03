@@ -336,6 +336,110 @@ async function buildPdfBuffer(sections: DocumentSection[], title: string): Promi
 }
 
 /* ===========================================================
+   POST /api/documents/generate
+   Accepts: multipart form with fields + optional file uploads
+   Returns: { sections: DocumentSection[], title: string }
+   =========================================================== */
+router.post(
+  '/generate',
+  authenticate,
+  upload.array('files', 10),
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const {
+        documentType,
+        subject,
+        subjectCode,
+        topic,
+        department,
+        year,
+        semester,
+        courseOutcomes,
+        programOutcomes,
+        customPrompt,
+        institution,
+      } = req.body;
+
+      if (!documentType) {
+        res.status(400).json({ success: false, error: 'documentType is required' });
+        return;
+      }
+
+      const files = req.files as Express.Multer.File[] | undefined;
+      const uploadedFiles = files?.map((f) => ({
+        buffer: f.buffer,
+        mimeType: f.mimetype,
+        originalName: f.originalname,
+      }));
+
+      const user = req.user!;
+
+      const params: GenerateDocumentParams = {
+        documentType,
+        subject,
+        subjectCode,
+        topic,
+        department,
+        year,
+        semester,
+        courseOutcomes,
+        programOutcomes,
+        customPrompt,
+        facultyName: user.name,
+        institution: institution || 'Manav Rachna University, Faridabad',
+        uploadedFiles,
+      };
+
+      const sections = await generateAcademicDocument(params);
+      const titleSection = sections.find((s) => s.type === 'heading1');
+      const title = titleSection?.content || subject || 'Academic Document';
+
+      const response: ApiResponse = {
+        success: true,
+        data: { sections, title },
+        message: `Document generated: ${sections.length} sections`,
+      };
+      res.status(200).json(response);
+    } catch (error) {
+      logger.error('Document generation route error:', error);
+      const msg = error instanceof Error ? error.message : 'Document generation failed';
+      res.status(500).json({ success: false, error: msg });
+    }
+  }
+);
+
+/* ===========================================================
+   POST /api/documents/download/docx
+   Accepts: { sections, title }
+   Returns: .docx file stream
+   =========================================================== */
+router.post(
+  '/download/docx',
+  authenticate,
+  async (req: AuthRequest, res: Response): Promise<void> => {
+    try {
+      const { sections, title } = req.body as { sections: DocumentSection[]; title: string };
+
+      if (!sections?.length) {
+        res.status(400).json({ success: false, error: 'No sections provided' });
+        return;
+      }
+
+      const doc = buildDocx(sections, title || 'document');
+      const buffer = await Packer.toBuffer(doc);
+
+      const safeTitle = (title || 'document').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
+      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.docx"`);
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
+      res.send(buffer);
+    } catch (error) {
+      logger.error('DOCX generation error:', error);
+      res.status(500).json({ success: false, error: 'Failed to generate DOCX file' });
+    }
+  }
+);
+
+/* ===========================================================
    POST /api/documents/download/pdf
    Accepts: { sections, title }
    Returns: .pdf file stream
