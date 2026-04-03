@@ -275,7 +275,6 @@ export default function SubmissionsPage() {
   }, [activityId]);
 
   const [activityEvaluations, setActivityEvaluations] = useState<Record<string, Evaluation[]>>({});
-...
   const fetchActivityEvaluations = async (id: string) => {
     try {
       const res = await evaluationsApi.getForActivity(id);
