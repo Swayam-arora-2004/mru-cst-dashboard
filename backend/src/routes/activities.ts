@@ -134,6 +134,10 @@ router.get('/attendance/history', authenticate, async (req: AuthRequest, res: Re
       query = query.ilike('time_range', `%${time_range}%`);
     }
 
+    if (req.query.specialization && req.query.specialization !== '' && req.query.specialization !== 'General') {
+      query = query.or(`specialization.eq.${req.query.specialization},specialization.is.null`);
+    }
+
     const { data: sessions, error } = await query;
 
     if (error) {
@@ -163,36 +167,48 @@ const upload = multer({
 router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const supabase = getSupabaseAdminClient();
-    const courseId = req.query.course_id as string;
+    const { course_id, year, semester, class_id, specialization, type } = req.query as any;
 
-    // Aggregate data using efficient database-level filtering by teacher_id
-    const [attendanceRes, assignmentsRes, documentTasksRes] = await Promise.all([
-      supabase.from('attendance_sessions')
-        .select('*, attendance_records(*)')
-        .eq('teacher_id', req.user!.id)
-        .order('created_at', { ascending: false }),
-      supabase.from('assignments')
-        .select('*, assignment_submissions(*)')
-        .eq('teacher_id', req.user!.id)
-        .order('created_at', { ascending: false }),
-      supabase.from('document_tasks')
-        .select('*, document_submissions(*)')
-        .eq('teacher_id', req.user!.id)
-        .order('created_at', { ascending: false })
-    ]);
+    const buildQuery = (table: string) => {
+      let q = supabase.from(table).select('*, ' + (table === 'attendance_sessions' ? 'attendance_records(*)' : table === 'assignments' ? 'assignment_submissions(*)' : 'document_submissions(*)'))
+        .eq('teacher_id', req.user!.id);
+      
+      if (course_id) q = q.eq('course_id', course_id);
+      if (year) q = q.eq('year', parseInt(year));
+      if (semester) q = q.eq('semester', parseInt(semester));
+      if (class_id) q = q.eq('class_id', class_id);
+      if (specialization && specialization !== 'General') {
+        q = q.or(`specialization.eq.${specialization},specialization.is.null`);
+      }
+      
+      return q.order('created_at', { ascending: false });
+    };
+
+    // Aggregate data conditionally based on type, or fetch all if not specified
+    const queries = [];
+    if (!type || type === 'attendance') queries.push(buildQuery('attendance_sessions'));
+    else queries.push(Promise.resolve({ data: [] }));
+
+    if (!type || type === 'assignment') queries.push(buildQuery('assignments'));
+    else queries.push(Promise.resolve({ data: [] }));
+
+    if (!type || type === 'document') queries.push(buildQuery('document_tasks'));
+    else queries.push(Promise.resolve({ data: [] }));
+
+    const [attendanceRes, assignmentsRes, documentTasksRes] = await Promise.all(queries);
 
     // Map to a common Activity format (backend handles the merging/sorting)
-    const attendance = (attendanceRes.data || []).map(a => ({ 
+    const attendance = (attendanceRes.data || []).map((a: any) => ({ 
       ...a, 
       type: 'attendance' as const, 
       activity_records: a.attendance_records 
     }));
-    const assignments = (assignmentsRes.data || []).map(a => ({ 
+    const assignments = (assignmentsRes.data || []).map((a: any) => ({ 
       ...a, 
       type: 'assignment' as const, 
       activity_records: a.assignment_submissions 
     }));
-    const documents = (documentTasksRes.data || []).map(a => ({ 
+    const documents = (documentTasksRes.data || []).map((a: any) => ({ 
       ...a, 
       type: 'document' as const, 
       activity_records: a.document_submissions 
@@ -270,7 +286,7 @@ router.post(
       }
 
       // 3. Create parent record
-      const { department_id, year, semester, class_id } = req.body;
+      const { department_id, year, semester, class_id, specialization } = req.body;
       const parentData: any = {
         teacher_id: req.user!.id,
         course_id: type === 'document' ? (course_id || null) : course_id,
@@ -279,6 +295,7 @@ router.post(
         year: parseInt(year) || null,
         semester: parseInt(semester) || null,
         class_id: class_id || null,
+        specialization: specialization || null,
       };
 
       if (title) parentData.title = title;
@@ -370,6 +387,7 @@ router.post(
           student_id: r.student_id,
           status: r.status,
           notes: r.notes || null,
+          specialization: activity.specialization || null,
         }));
 
         const { error: recordsError } = await supabase

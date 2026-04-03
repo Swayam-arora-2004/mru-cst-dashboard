@@ -55,12 +55,13 @@ export async function loadModels(): Promise<void> {
       // Import face-api
       faceapi = await import('@vladmandic/face-api');
 
-      // Force pure CPU backend — essential for stability on Render's Free-Tier (512MB RAM)
-      // Native TensorFlow (tfjs-node) binaries often OOM or fail to build in low-resource setups.
-      await (faceapi as any).tf.setBackend('cpu');
-      await (faceapi as any).tf.ready();
+      // Force pure JS CPU backend — essential for stability on Render's Free-Tier (512MB RAM)
+      // We use @tensorflow/tfjs (WASM/CPU) instead of tfjs-node to avoid binary OOMs.
+      const tf = await import('@tensorflow/tfjs');
+      await tf.setBackend('cpu');
+      await tf.ready();
 
-      logger.info('✅ Face API CPU backend initialized successfully');
+      logger.info('✅ Face API Pure-JS CPU backend initialized');
 
       // Attempt to load each network individually with clear logging
       await faceapi.nets.ssdMobilenetv1.loadFromDisk(MODELS_PATH);

@@ -1,21 +1,56 @@
-import { GoogleGenerativeAI } from '@google/generative-ai';
+import { GoogleGenerativeAI, SchemaType } from '@google/generative-ai';
 import { config } from '../config';
 import logger from './logger';
 import { CourseCodeParams } from '../types';
 
 let genAI: GoogleGenerativeAI | null = null;
 
-const getGenAI = (): GoogleGenerativeAI => {
+export const getGenAI = (): GoogleGenerativeAI => {
   if (!genAI) {
+    if (!config.gemini.apiKey) {
+      throw new Error('GEMINI_API_KEY environment variable is not defined.');
+    }
     genAI = new GoogleGenerativeAI(config.gemini.apiKey);
   }
   return genAI;
 };
 
+// 🔒 Mutex to ensure sequential AI requests (Free tier 15 RPM limit)
+class Mutex {
+  private queue: Promise<void> = Promise.resolve();
+  async acquire() {
+    let release: () => void;
+    const next = new Promise<void>((resolve) => { release = resolve; });
+    const current = this.queue;
+    this.queue = next;
+    await current;
+    return () => release!();
+  }
+}
+export const aiLock = new Mutex();
+let globalQuotaResetTime = 0;
+let lastRequestTime = 0; // Tracking for 15 RPM Pacing
+let throttleActiveUntil = 0; // If hit 429, slow down to 10s for 15 mins
+const cooldownModels = new Map<string, number>(); // modelName -> timestamp to resume
+
+/**
+ * Extracts duration in milliseconds from standard RPC duration strings (e.g., '52s', '3600s')
+ */
+const parseDurationMs = (durationKey?: string): number => {
+  if (!durationKey) return 0;
+  const match = durationKey.match(/^(\d+)s$/);
+  return match ? parseInt(match[1], 10) * 1000 : 0;
+};
+
 const FALLBACK_MODELS = [
-  'gemini-2.5-flash',
-  'gemini-2.0-flash',
-  'gemini-1.5-flash-latest',
+  'models/gemini-1.5-flash',       // Most reliable for file inputs
+  'models/gemini-1.5-pro',         // High quality, supports files
+  'models/gemini-2.0-flash',       // Fast and capable
+  'models/gemini-2.0-flash-lite',  // Lightweight fallback
+  'models/gemini-1.5-flash-8b',    // Smallest, still supports files
+  'models/gemini-pro-latest',      // Latest stable
+  'models/gemini-flash-latest',    // Latest flash alias
+  'models/gemini-2.5-flash-lite',  // New lite variant
 ];
 
 const isModelNotFoundError = (err: unknown): boolean => {
@@ -107,22 +142,27 @@ export const generateCourseCodeSuggestions = async (
     Example response:
     [{"code": "CSH425B", "explanation": "CSH: Computer Science, 425: Course number, B: Batch indicator"}, ...]`;
 
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const text = response.text();
-    
-    // Extract JSON from response
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) {
-      throw new Error('Failed to parse AI response');
-    }
+    const release = await aiLock.acquire();
+    try {
+      const result = await model.generateContent(prompt);
+      const response = await result.response;
+      const text = response.text();
+      
+      // Extract JSON from response
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (!jsonMatch) {
+        throw new Error('Failed to parse AI response');
+      }
 
-    const suggestions: { code: string; explanation: string }[] = JSON.parse(jsonMatch[0]);
-    
-    return suggestions.map((s) => ({
-      ...s,
-      isUnique: !existingCodes.includes(s.code),
-    }));
+      const suggestions: { code: string; explanation: string }[] = JSON.parse(jsonMatch[0]);
+      
+      return suggestions.map((s) => ({
+        ...s,
+        isUnique: !existingCodes.includes(s.code),
+      }));
+    } finally {
+      release();
+    }
   } catch (error) {
     console.error('Gemini API Error:', error);
     // Fallback to basic code generation
@@ -189,13 +229,18 @@ export const validateCourseCode = async (
       Existing codes to avoid: ${existingCodes.slice(0, 20).join(', ')}
       Return only a JSON array of 3 strings with the suggested codes.`;
 
-      const result = await model.generateContent(prompt);
-      const response = await result.response;
-      const text = response.text();
-      
-      const jsonMatch = text.match(/\[[\s\S]*\]/);
-      if (jsonMatch) {
-        suggestions = JSON.parse(jsonMatch[0]);
+      const release = await aiLock.acquire();
+      try {
+        const result = await model.generateContent(prompt);
+        const response = await result.response;
+        const text = response.text();
+        
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+          suggestions = JSON.parse(jsonMatch[0]);
+        }
+      } finally {
+        release();
       }
     } catch (error) {
       console.error('Failed to generate suggestions:', error);
@@ -381,71 +426,74 @@ Example:
 
     let lastError: Error | null = null;
 
-    for (const modelName of FALLBACK_MODELS) {
-      try {
-        logger.info(`Trying model: ${modelName}`);
-        const model = ai.getGenerativeModel({ model: modelName });
-        const result = await model.generateContent({ contents: [{ role: 'user', parts }] });
-        const text = result.response.text().trim();
+    const release = await aiLock.acquire();
+    try {
+      for (const modelName of FALLBACK_MODELS) {
+        try {
+          logger.info(`Trying model: ${modelName}`);
+          const model = ai.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent({ contents: [{ role: 'user', parts }] });
+          const text = result.response.text().trim();
 
-        // Strip markdown fences if Gemini wraps with ```json ... ```
-        const clean = text
-          .replace(/^```(?:json)?\s*/i, '')
-          .replace(/\s*```$/i, '')
-          .trim();
+          // Strip markdown fences if Gemini wraps with ```json ... ```
+          const clean = text
+            .replace(/^```(?:json)?\s*/i, '')
+            .replace(/\s*```$/i, '')
+            .trim();
 
-        const rawSections: DocumentSection[] = JSON.parse(clean);
+          const rawSections: DocumentSection[] = JSON.parse(clean);
 
-        if (!Array.isArray(rawSections) || rawSections.length === 0) {
-          throw new Error('Empty or invalid response from AI model');
-        }
+          if (!Array.isArray(rawSections) || rawSections.length === 0) {
+            throw new Error('Empty or invalid response from AI model');
+          }
 
-        // ─── Sanitization ───────────────────────────────────────────────────
-        // AI sometimes nests objects or returns non-strings in content/items.
-        // This ensures the rest of the pipeline (DOCX, PDF, Frontend) is safe.
-        const sections: DocumentSection[] = rawSections.map((s) => ({
-          type: s.type || 'paragraph',
-          content: typeof s.content === 'object' ? JSON.stringify(s.content) : String(s.content || ''),
-          items: Array.isArray(s.items)
-            ? s.items.map((it) => (typeof it === 'object' ? JSON.stringify(it) : String(it)))
-            : undefined,
-          rows: Array.isArray(s.rows)
-            ? s.rows.map((row) =>
-                Array.isArray(row)
-                  ? row.map((cell) => (typeof cell === 'object' ? JSON.stringify(cell) : String(cell)))
-                  : []
-              )
-            : undefined,
-        })) as DocumentSection[];
+          // ─── Sanitization ───────────────────────────────────────────────────
+          const sections: DocumentSection[] = rawSections.map((s) => ({
+            type: s.type || 'paragraph',
+            content: typeof s.content === 'object' ? JSON.stringify(s.content) : String(s.content || ''),
+            items: Array.isArray(s.items)
+              ? s.items.map((it) => (typeof it === 'object' ? JSON.stringify(it) : String(it)))
+              : undefined,
+            rows: Array.isArray(s.rows)
+              ? s.rows.map((row) =>
+                  Array.isArray(row)
+                    ? row.map((cell) => (typeof cell === 'object' ? JSON.stringify(cell) : String(cell)))
+                    : []
+                )
+              : undefined,
+          })) as DocumentSection[];
 
-        logger.info(`✅ Document generated and sanitized with ${modelName}: ${sections.length} sections`);
-        return sections;
-      } catch (err: any) {
-        const isRateLimit = err?.status === 429 || err?.statusText === 'Too Many Requests';
-        const retryDelay = err?.errorDetails?.find((d: any) => d['@type']?.includes('RetryInfo'))?.retryDelay;
-        const modelNotFound = isModelNotFoundError(err);
+          logger.info(`✅ Document generated and sanitized with ${modelName}: ${sections.length} sections`);
+          return sections;
+        } catch (err: any) {
+          const isRateLimit = err?.status === 429 || err?.statusText === 'Too Many Requests';
+          const retryDelay = err?.errorDetails?.find((d: any) => d['@type']?.includes('RetryInfo'))?.retryDelay;
+          const modelNotFound = isModelNotFoundError(err);
 
-        if (isRateLimit) {
-          logger.warn(`Rate limit on ${modelName} (retry delay: ${retryDelay || 'unknown'}). Trying next model...`);
-          lastError = new Error(
-            `API rate limit reached on ${modelName}. Please wait a moment and try again.`
-          );
-          // Wait briefly before trying next model
-          await new Promise((r) => setTimeout(r, 1500));
-          continue;
-        }
+          if (isRateLimit) {
+            logger.warn(`Rate limit on ${modelName} (retry delay: ${retryDelay || 'unknown'}). Trying next model...`);
+            lastError = new Error(
+              `API rate limit reached on ${modelName}. Please wait a moment and try again.`
+            );
+            // Wait briefly before trying next model
+            await new Promise((r) => setTimeout(r, 2000));
+            continue;
+          }
 
-        if (modelNotFound) {
-          logger.warn(`Model unavailable: ${modelName}. Trying next model...`);
+          if (modelNotFound) {
+            logger.warn(`Model unavailable: ${modelName}. Trying next model...`);
+            lastError = err instanceof Error ? err : new Error(String(err));
+            continue;
+          }
+
+          // Non-rate-limit error — log and re-throw
+          logger.error(`Error with model ${modelName}:`, err);
           lastError = err instanceof Error ? err : new Error(String(err));
-          continue;
+          break;
         }
-
-        // Non-rate-limit error — log and re-throw
-        logger.error(`Error with model ${modelName}:`, err);
-        lastError = err instanceof Error ? err : new Error(String(err));
-        break;
       }
+    } finally {
+      release();
     }
 
     // All models failed
@@ -465,122 +513,208 @@ Example:
   }
 };
 
+// Models that support responseSchema (structured outputs)
+const SCHEMA_CAPABLE_MODELS = new Set([
+  'models/gemini-1.5-flash',
+  'models/gemini-1.5-flash-8b',
+  'models/gemini-1.5-pro',
+  'models/gemini-2.0-flash',
+  'models/gemini-2.0-flash-lite',
+  'models/gemini-pro-latest',
+  'models/gemini-flash-latest',
+  'models/gemini-flash-lite-latest',
+  'models/gemini-2.5-flash-lite',
+]);
+
 /**
  * Evaluates a student submission using AI.
- * Parses the file content (PDF/Image) and generates a grade and descriptive feedback.
+ * Uses responseSchema for 100% accurate, parsable JSON output.
  */
 export const evaluateSubmission = async (
   params: EvaluationParams
 ): Promise<EvaluationResult> => {
   const ai = getGenAI();
   const { activityTitle, activityType, courseName, studentName, fileData } = params;
+  const maxMarks = params.maxMarks || 100;
 
-  const systemPrompt = `
-You are an expert University Professor grading a student's ${activityType}.
+  const systemPrompt = `You are a strict University Professor grading a student's ${activityType}.
 Student Name: ${studentName}
 Activity Topic: ${activityTitle}
 Course: ${courseName || 'General'}
-Max Marks Allotted: ${params.maxMarks || 100}
+Max Marks: ${maxMarks}
 
-${params.questionFileData ? 'I have provided the ORIGINAL ASSIGNMENT QUESTIONS/PROMPT as the first file. Please grade the student\'s submission (the second file) specifically against these questions.' : 'Please grade the student\'s submission based on the topic provided.'}
-
-TASK: 
-1. Analyze the attached files.
-2. Evaluate based on accuracy, depth, and presentation for a University-level submission.
-3. Decide on a final grade (A, B, C, D, F) AND a numeric score (between 0 and ${params.maxMarks || 100}).
-4. Return ONLY a JSON object with:
-{
-  "grade": "Letter Grade",
-  "score": numeric_value
+${params.questionFileData
+  ? 'The FIRST file is the original QUESTION/PROMPT. The SECOND file is the STUDENT SUBMISSION. Grade the student submission against the question.'
+  : 'Grade the student submission based on the topic provided.'
 }
-`;
 
+GRADING RULES:
+- Score must be a NUMBER between 0 and ${maxMarks}.
+- Grade must be ONE of: A, B, C, D, F
+  - A: ${Math.round(maxMarks * 0.9)}-${maxMarks} marks (Excellent)
+  - B: ${Math.round(maxMarks * 0.75)}-${Math.round(maxMarks * 0.89)} marks (Good)
+  - C: ${Math.round(maxMarks * 0.6)}-${Math.round(maxMarks * 0.74)} marks (Average)
+  - D: ${Math.round(maxMarks * 0.45)}-${Math.round(maxMarks * 0.59)} marks (Below Average)
+  - F: 0-${Math.round(maxMarks * 0.44)} marks (Fail)
+- If the file is BLANK, EMPTY, or UNREADABLE: score=0, grade=F
+- If IRRELEVANT to topic: score very low or 0
+- Be fair but strict. Justify the score briefly.
+
+Return JSON with keys: grade (string), score (number), reason (string).`;
+
+  const release = await aiLock.acquire();
   try {
-    const parts: any[] = [{ text: systemPrompt }];
+    // 🚦 RATE PACING
+    const now = Date.now();
+    const isThrottled = throttleActiveUntil > now;
+    const requiredGap = isThrottled ? 20000 : 6000;
+    const timeSinceLast = now - lastRequestTime;
+    if (timeSinceLast < requiredGap) {
+      const paceDelay = requiredGap - timeSinceLast;
+      logger.info(`🕙 Pacing: Waiting ${Math.round(paceDelay / 1000)}s before next AI call...`);
+      await new Promise(resolve => setTimeout(resolve, paceDelay));
+    }
+    lastRequestTime = Date.now();
 
-    // Add Question Context if it exists
-    if (params.questionFileData) {
-      parts.push({
-        inlineData: {
-          mimeType: params.questionFileData.mimeType,
-          data: params.questionFileData.buffer.toString('base64'),
-        },
-      });
-      logger.info('Attached Question Context to Gemini prompt');
+    // 🛡️ Respect Global Freeze
+    if (globalQuotaResetTime > Date.now()) {
+      const waitTime = globalQuotaResetTime - Date.now() + 500;
+      logger.warn(`⏸️ Global Freeze active. Waiting ${Math.round(waitTime / 1000)}s...`);
+      await new Promise(resolve => setTimeout(resolve, waitTime));
     }
 
-    // Add Student Submission
-    parts.push({
-      inlineData: {
-        mimeType: fileData.mimeType,
-        data: fileData.buffer.toString('base64'),
-      },
-    });
+    // Build content parts
+    const parts: any[] = [{ text: systemPrompt }];
+    if (params.questionFileData) {
+      parts.push({ inlineData: { mimeType: params.questionFileData.mimeType, data: params.questionFileData.buffer.toString('base64') } });
+      logger.info('Attached Question Context to Gemini prompt');
+    }
+    parts.push({ inlineData: { mimeType: fileData.mimeType, data: fileData.buffer.toString('base64') } });
 
     for (const modelName of FALLBACK_MODELS) {
+      // ⚡ CIRCUIT BREAKER: Skip cooldown models
+      if (cooldownModels.has(modelName)) {
+        const resumeAt = cooldownModels.get(modelName)!;
+        if (resumeAt > Date.now()) {
+          logger.info(`⚡ Circuit Breaker: Skipping ${modelName} (${Math.round((resumeAt - Date.now()) / 1000)}s cooldown remaining)`);
+          continue;
+        }
+        cooldownModels.delete(modelName);
+      }
+
       let retryCount = 0;
-      const maxRetries = 5; // Extended patience for high-volume sessions
+      const maxRetries = 2;
 
       while (retryCount <= maxRetries) {
         try {
-          logger.info(`Evaluating submission with model: ${modelName} (Attempt ${retryCount + 1}/${maxRetries + 1})`);
-          const model = ai.getGenerativeModel({ model: modelName });
+          logger.info(`Evaluating with model: ${modelName} (Attempt ${retryCount + 1}/${maxRetries + 1})`);
+
+          // Only inject responseSchema for capable models
+          const generationConfig: any = SCHEMA_CAPABLE_MODELS.has(modelName)
+            ? {
+                responseMimeType: 'application/json',
+                responseSchema: {
+                  type: SchemaType.OBJECT,
+                  properties: {
+                    grade: { type: SchemaType.STRING },
+                    score: { type: SchemaType.NUMBER },
+                    reason: { type: SchemaType.STRING },
+                  },
+                  required: ['grade', 'score', 'reason'],
+                },
+              }
+            : { responseMimeType: 'application/json' };
+
+          const model = ai.getGenerativeModel({ model: modelName, generationConfig });
           const result = await model.generateContent({ contents: [{ role: 'user', parts }] });
-          const text = result.response.text().trim();
+          const rawText = result.response.text().trim();
 
-          const clean = text
-            .replace(/^```(?:json)?\s*/i, '')
-            .replace(/\s*```$/i, '')
-            .trim();
+          // Clean markdown fences if present
+          const clean = rawText.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 
-          const evaluation: EvaluationResult = JSON.parse(clean);
-          
-          if (!evaluation.grade) {
-            throw new Error('Incomplete evaluation from AI');
+          let evaluation: any;
+          try {
+            evaluation = JSON.parse(clean);
+          } catch {
+            logger.warn(`JSON parse failed for ${modelName}. Response was: ${rawText.slice(0, 200)}`);
+            break; // Try next model
           }
 
-          return { ...evaluation, source: 'ai' };
+          // ✅ Validate and clamp output
+          const validGrades = ['A', 'B', 'C', 'D', 'F'];
+          const rawGrade = String(evaluation.grade || '').toUpperCase().trim();
+          const grade = validGrades.includes(rawGrade) ? rawGrade : 'F';
+          const rawScore = Number(evaluation.score);
+          const score = isNaN(rawScore) ? 0 : Math.min(Math.max(Math.round(rawScore), 0), maxMarks);
+          const feedback = String(evaluation.reason || evaluation.feedback || `Grade: ${grade}`);
+
+          logger.info(`✅ ${modelName} graded: ${grade} (${score}/${maxMarks})`);
+          return { grade, score, feedback, source: 'ai' };
+
         } catch (err: any) {
-          const isRateLimit = err.message?.includes('429') || err.status === 429 || err.message?.toLowerCase().includes('too many requests') || err.message?.toLowerCase().includes('quota');
-          const modelNotFound = isModelNotFoundError(err);
-          
-          if (isRateLimit && retryCount < maxRetries) {
-            retryCount++;
-            // Exponential backoff with jitter: (2^retry * 2s) + rand(0-2s)
-            const delay = (Math.pow(2, retryCount) * 2000) + (Math.random() * 2000);
-            logger.warn(`AI Quota Busy for ${modelName}. Retrying in ${Math.round(delay/1000)}s...`);
-            await new Promise(resolve => setTimeout(resolve, delay));
-            continue;
+          const errMsg = (err.message || '').toLowerCase();
+          const errStatus = err.status || err.httpStatus || (err.errorDetails?.[0]?.reason);
+          const isRateLimit =
+            errStatus === 429 ||
+            errMsg.includes('429') ||
+            errMsg.includes('too many requests') ||
+            errMsg.includes('quota') ||
+            errMsg.includes('rate limit') ||
+            errMsg.includes('resource_exhausted');
+
+          if (isRateLimit) {
+            const rpcDetails: any[] = err.errorDetails || err.details || [];
+            const retryInfo = rpcDetails.find((d: any) => d['@type']?.includes('RetryInfo'));
+            const requestedDelay = parseDurationMs(retryInfo?.retryDelay);
+            const freezeDuration = Math.max(requestedDelay > 0 ? requestedDelay + 5000 : 45000, 60000);
+
+            globalQuotaResetTime = Date.now() + freezeDuration;
+            throttleActiveUntil = Date.now() + 15 * 60 * 1000;
+            cooldownModels.set(modelName, Date.now() + (requestedDelay > 30000 ? 600000 : 180000));
+
+            logger.warn(`🧊 QUOTA HIT on ${modelName}. Global Freeze for ${Math.round(freezeDuration / 1000)}s. Moving to next model after freeze.`);
+            await new Promise(resolve => setTimeout(resolve, freezeDuration));
+            break; // Move to next model after freeze
           }
 
-          if (modelNotFound) {
-            logger.warn(`Model unavailable for evaluation: ${modelName}. Switching model...`);
+          if (isModelNotFoundError(err)) {
+            logger.warn(`Model unavailable: ${modelName}. Switching model...`);
             break;
           }
 
-          logger.error(`AI Evaluation failure with ${modelName}:`, err.message);
-          // Only switch models if we've exhausted all retries or it's not a rate limit
-          break; 
+          if (retryCount < maxRetries) {
+            retryCount++;
+            logger.warn(`Retrying ${modelName} after non-quota error (${retryCount}/${maxRetries})...`);
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            continue;
+          }
+
+          logger.error(`AI failure with ${modelName}:`, err.message);
+          break;
         }
       }
     }
 
-    throw new Error('Gemini API is currently under heavy load. Please wait 1-2 minutes for the quota to reset.');
-  } catch (error: any) {
-    logger.error('CRITICAL_GEMINI_FAILURE:', error.message);
-    throw error;
+    // All models exhausted
+    throw new Error('All Gemini models failed. The submission will be retried by the worker on next cycle.');
+  } finally {
+    release();
   }
 };
+
+
 
 /**
  * [SYSTEM FALLBACK] Generates a realistic grade when the AI is busy.
  * This ensures the instructor's UI remains reactive even if the Gemini quota is exhausted.
  */
 export const generateSimulatedEvaluation = (maxMarks: number = 100): EvaluationResult => {
-  const grades = ['A', 'A+', 'B'];
-  const grade = grades[Math.floor(Math.random() * grades.length)];
-  const multiplier = grade === 'A+' ? 0.95 : (grade === 'A' ? 0.9 : 0.8);
-  const score = Math.round(maxMarks * multiplier);
-
-  return { grade, score, source: 'system' };
+  // Defaulting to a safe 'PENDING' state to avoid overestimating scores
+  // This requires the instructor to perform a manual review
+  return { 
+    grade: 'PENDING', 
+    score: 0, 
+    source: 'system',
+    feedback: 'AI is currently at capacity or timed out. Please retry this specific student.'
+  };
 };

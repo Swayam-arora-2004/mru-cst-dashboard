@@ -1,8 +1,12 @@
 "use client";
 
-import { Search, Bell } from "lucide-react";
+import { Search, Bell, Sparkles, BrainCircuit, Activity } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { useState, useEffect } from "react";
+import { generalApi } from "@/lib/api";
+import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 
 interface HeaderProps {
   title: string;

@@ -26,13 +26,17 @@ export const config = {
     apiKey: process.env.GEMINI_API_KEY || '',
   },
   
+  groq: {
+    apiKey: process.env.GROQ_API_KEY || '',
+  },
+  
   cors: {
     frontendUrl: process.env.FRONTEND_URL || 'http://localhost:3000',
   },
   
   rateLimit: {
     windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000', 10),
-    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (process.env.NODE_ENV === 'development' ? '1000' : '100'), 10),
+    maxRequests: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS || (process.env.NODE_ENV === 'development' ? '2000' : '500'), 10),
   },
   
   // Auth-specific rate limiting (more lenient in development)
@@ -64,6 +68,7 @@ const requiredEnvVars = [
 // Optional but recommended
 const optionalEnvVars = [
   'GEMINI_API_KEY',
+  'GROQ_API_KEY',
   'FRONTEND_URL',
 ] as const;
 

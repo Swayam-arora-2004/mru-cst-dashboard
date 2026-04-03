@@ -38,6 +38,7 @@ import {
   ClassInfo
 } from "@/lib/api";
 import Link from "next/link";
+import { getSpecializations } from "@/lib/specializations";
 
 export default function AttendanceHistoryPage() {
   const [courses, setCourses] = useState<Course[]>([]);
@@ -47,15 +48,26 @@ export default function AttendanceHistoryPage() {
   const [selectedYear, setSelectedYear] = useState<string>("");
   const [selectedSemester, setSelectedSemester] = useState<string>("");
   const [selectedClassId, setSelectedClassId] = useState<string>("");
+  const [selectedSpecialization, setSelectedSpecialization] = useState<string>("");
+  const [debouncedSpecialization, setDebouncedSpecialization] = useState<string>("");
   const [selectedTimeRange, setSelectedTimeRange] = useState<string>("all");
   
   const [departments, setDepartments] = useState<Department[]>([]);
   const [classes, setClasses] = useState<ClassInfo[]>([]);
+  const [specializations, setSpecializations] = useState<string[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const isFilterComplete = !!(selectedDate && selectedYear && selectedSemester && selectedClassId);
+
+  // Debounce Specialization
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSpecialization(selectedSpecialization);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [selectedSpecialization]);
 
   useEffect(() => {
     fetchInitialData();
@@ -67,7 +79,7 @@ export default function AttendanceHistoryPage() {
     } else {
       setSessions([]);
     }
-  }, [selectedDate, selectedCourseId, selectedYear, selectedSemester, selectedClassId, selectedTimeRange]);
+  }, [selectedDate, selectedCourseId, selectedYear, selectedSemester, selectedClassId, selectedTimeRange, debouncedSpecialization]);
 
   useEffect(() => {
     if (selectedDepartmentId) {
@@ -77,12 +89,18 @@ export default function AttendanceHistoryPage() {
 
   const fetchInitialData = async () => {
     try {
-      const deptsRes = await generalApi.getDepartments();
+      const [deptsRes, academicRes] = await Promise.all([
+        generalApi.getDepartments(),
+        generalApi.getAcademicInfo()
+      ]);
       if (deptsRes.success && deptsRes.data) {
         setDepartments(deptsRes.data);
         if (deptsRes.data.length > 0) {
           setSelectedDepartmentId(deptsRes.data[0].id);
         }
+      }
+      if (academicRes.success && academicRes.data) {
+        setSpecializations(academicRes.data.specializations || []);
       }
     } catch (err) {
       console.error("Failed to load initial data:", err);
@@ -129,7 +147,9 @@ export default function AttendanceHistoryPage() {
         selectedCourseId === "all" ? undefined : selectedCourseId,
         selectedYear,
         selectedSemester,
-        selectedClassId
+        selectedClassId,
+        undefined, // timeRange handled locally for sessions
+        debouncedSpecialization || undefined
       );
       if (res.success && res.data) {
         setSessions(res.data);
@@ -245,6 +265,20 @@ export default function AttendanceHistoryPage() {
                 {classes.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
             </div>
+
+            <div className="space-y-2">
+              <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">Specialization</Label>
+              <select 
+                value={selectedSpecialization}
+                onChange={(e) => setSelectedSpecialization(e.target.value)}
+                className="w-full h-11 rounded-xl border border-border/50 bg-card px-3 text-sm font-bold focus:outline-none focus:ring-2 focus:ring-blue-500/10 transition-all appearance-none"
+              >
+                <option value="">All Specializations</option>
+                {getSpecializations(departments.find(d => d.id === selectedDepartmentId)?.name || '').map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+            </div>
           </div>
 
           {/* Secondary Filters & Search */}
@@ -324,7 +358,7 @@ export default function AttendanceHistoryPage() {
                </div>
                <h3 className="text-xl font-black uppercase tracking-tight text-foreground">Specify Report Context</h3>
                <p className="text-sm text-muted-foreground mt-2 max-w-sm">
-                 Please select the Year, Semester, and Section to view the attendance ledger for this date.
+                 Please select the Year, Semester, Section, and Specialization to view the attendance ledger for this date.
                </p>
             </div>
           ) : isLoading ? (

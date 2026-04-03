@@ -43,8 +43,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response): Promise<v
     }
     if (type) query = query.eq('type', type);
     if (departmentId) query = query.eq('department_id', departmentId);
-    if (year) query = query.eq('year', parseInt(year));
-    if (semester) query = query.eq('semester', parseInt(semester));
+    if (year && !isNaN(parseInt(year))) query = query.eq('year', parseInt(year));
+    if (semester && !isNaN(parseInt(semester))) query = query.eq('semester', parseInt(semester));
+    if (req.query.specialization && req.query.specialization !== '') {
+      query = query.eq('specialization', req.query.specialization);
+    }
     if (isActive !== undefined) query = query.eq('is_active', isActive === 'true');
 
     logger.info(`Fetching courses with filters: teacher=${req.user!.id}, dept=${departmentId}, year=${year}, sem=${semester}`);
@@ -266,14 +269,10 @@ router.get('/code/:code', authenticate, async (req: AuthRequest, res: Response):
 // Create new course
 router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { code, name, description, credits, type, department_id, semester, year, class_id } = req.body;
-
-    if (!code || !name || !type || !department_id || !semester || !year) {
-      const response: ApiResponse = {
-        success: false,
-        error: 'Missing required fields',
-      };
-      res.status(400).json(response);
+    const { name, code, credits, type, department_id, semester, year, specialization, is_active } = req.body;
+    
+    if (!name || !code || !type || !department_id || !semester) {
+      res.status(400).json({ success: false, error: 'Missing required course fields' });
       return;
     }
 
@@ -299,17 +298,16 @@ router.post('/', authenticate, async (req: AuthRequest, res: Response): Promise<
     const { data: course, error } = await supabase
       .from('courses')
       .insert({
-        code,
         name,
-        description,
+        code,
         credits: credits || 3,
         type,
         department_id,
-        semester,
-        year,
-        class_id,
+        semester: parseInt(semester),
+        year: parseInt(year) || 1,
+        specialization: specialization || null,
+        is_active: is_active !== undefined ? is_active : true,
         teacher_id: req.user!.id,
-        is_active: true,
       })
       .select('*, departments(*)')
       .single();

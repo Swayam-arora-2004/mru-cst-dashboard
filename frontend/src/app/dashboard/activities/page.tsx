@@ -32,6 +32,7 @@ import {
   Input
 } from "@/components/ui";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   studentsApi,
   coursesApi,
@@ -44,6 +45,7 @@ import {
   ClassInfo,
 } from "@/lib/api";
 import { useAuthStore } from "@/store/authStore";
+import { getSpecializations } from "@/lib/specializations";
 
 const TIME_SLOTS = [
   { label: "09:00 AM - 10:00 AM", start: "09:00", end: "10:00" },
@@ -77,6 +79,7 @@ export default function ActivitiesPage() {
   const [endTime, setEndTime] = useState("10:00");
   const [selectedSlot, setSelectedSlot] = useState(TIME_SLOTS[0].label);
   const [questionFile, setQuestionFile] = useState<File | null>(null);
+  const [specialization, setSpecialization] = useState("");
 
   // Admin Tracking State (for Documents)
   const [departments, setDepartments] = useState<Department[]>([]);
@@ -90,31 +93,8 @@ export default function ActivitiesPage() {
   const [checklist, setChecklist] = useState<Record<string, boolean>>({});
 
   // Recent Activities Ledger
-  const [recentActivities, setRecentActivities] = useState<any[]>([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
-  const [editingActivity, setEditingActivity] = useState<any | null>(null);
 
-  const fetchRecentActivities = async () => {
-    if (!selectedDepartment || !selectedYear || !selectedSemester || !selectedClass) return;
-    setIsHistoryLoading(true);
-    try {
-      const res = await activitiesApi.getAll();
-      if (res.success && res.data) {
-        // Filter by current context
-        const filtered = res.data.filter((a: any) => 
-          a.class_id === selectedClass && 
-          a.department_id === selectedDepartment &&
-          a.year === parseInt(selectedYear) &&
-          a.semester === parseInt(selectedSemester)
-        );
-        setRecentActivities(filtered);
-      }
-    } catch (err) {
-      console.error("Fetch history error:", err);
-    } finally {
-      setIsHistoryLoading(false);
-    }
-  };
 
   useEffect(() => {
     if (isHydrated && isAuthenticated) {
@@ -122,9 +102,6 @@ export default function ActivitiesPage() {
     }
   }, [isHydrated, isAuthenticated]);
 
-  useEffect(() => {
-    fetchRecentActivities();
-  }, [selectedDepartment, selectedYear, selectedSemester, selectedClass]);
 
   const fetchBaseData = async () => {
     setIsLoading(true);
@@ -193,6 +170,7 @@ export default function ActivitiesPage() {
           department_id: selectedDepartment,
           year: parseInt(selectedYear),
           semester: parseInt(selectedSemester),
+          specialization: specialization || undefined,
           limit: 100
         });
         if (res.success && res.data) {
@@ -207,10 +185,10 @@ export default function ActivitiesPage() {
     };
 
     fetchCourses();
-  }, [selectedDepartment, selectedSemester, selectedYear]);
+  }, [selectedDepartment, selectedSemester, selectedYear, specialization]);
 
   // 3. Fetch Students when all filters are complete (Only for Attendance)
-  const isFilterComplete = !!(selectedDepartment && selectedYear && selectedSemester && selectedClass);
+  const isFilterComplete = !!(selectedDepartment && selectedYear && selectedSemester && selectedClass && specialization);
   const isSubmissionReady = isFilterComplete && (type === 'document' || courseId);
 
   useEffect(() => {
@@ -228,6 +206,7 @@ export default function ActivitiesPage() {
           year: parseInt(selectedYear),
           semester: parseInt(selectedSemester),
           class_id: selectedClass,
+          specialization: specialization || undefined,
           limit: 100
         });
 
@@ -247,7 +226,7 @@ export default function ActivitiesPage() {
     };
 
     fetchStudents();
-  }, [isFilterComplete, type, selectedDepartment, selectedYear, selectedSemester, selectedClass]);
+  }, [isFilterComplete, type, selectedDepartment, selectedYear, selectedSemester, selectedClass, specialization]);
 
   useEffect(() => {
     const course = courses.find((c: any) => c.id === courseId);
@@ -261,35 +240,6 @@ export default function ActivitiesPage() {
     setChecklist((prev: any) => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleUpdateActivity = async (id: string, data: any) => {
-    try {
-      const res = await activitiesApi.update(id, data);
-      if (res.success) {
-        toast.success("Activity updated successfully.");
-        fetchRecentActivities();
-        setEditingActivity(null);
-      } else {
-        toast.error(res.error || "Failed to update activity.");
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Update error.");
-    }
-  };
-
-  const handleDeleteActivity = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this activity? This will remove all associated records.")) return;
-    try {
-      const res = await activitiesApi.delete(id);
-      if (res.success) {
-        toast.success("Activity deleted.");
-        fetchRecentActivities();
-      } else {
-        toast.error(res.error || "Failed to delete.");
-      }
-    } catch (err: any) {
-      toast.error(err.message || "Delete error.");
-    }
-  };
 
   const handleSave = async () => {
 
@@ -319,6 +269,7 @@ export default function ActivitiesPage() {
       formData.append("year", selectedYear);
       formData.append("semester", selectedSemester);
       formData.append("class_id", selectedClass);
+      formData.append("specialization", specialization);
 
       if (type !== 'document') {
         formData.append("course_id", courseId);
@@ -505,6 +456,20 @@ export default function ActivitiesPage() {
                         </select>
                       </div>
 
+                      <div className="space-y-2">
+                        <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Specialization</Label>
+                        <select
+                          className="flex h-10 w-full rounded-lg border border-input bg-card px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all font-bold"
+                          value={specialization}
+                          onChange={(e) => setSpecialization(e.target.value)}
+                        >
+                          <option value="">Select Specialization</option>
+                          {getSpecializations(departments.find(d => d.id === selectedDepartment)?.name || '').map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+
                       {type !== 'document' && (
                         <div className="space-y-2 pt-2 border-t border-border/10">
                           <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Target Course</Label>
@@ -514,7 +479,10 @@ export default function ActivitiesPage() {
                             onChange={(e) => setCourseId(e.target.value)}
                           >
                             <option value="">Select Course</option>
-                            {courses.map(c => <option key={c.id} value={c.id}>{c.code} - {c.name}</option>)}
+                            {courses.map(c => {
+                              const matchesSpec = !specialization || specialization === 'General' || c.specialization === specialization;
+                              return matchesSpec ? <option key={c.id} value={c.id}>{c.code} - {c.name}</option> : null;
+                            })}
                           </select>
                         </div>
                       )}
@@ -665,228 +633,97 @@ export default function ActivitiesPage() {
           </div>
 
           {/* Main Content Area */}
-          <div className="lg:col-span-8 space-y-8">
-            {type === 'attendance' ? (
-              <Card className="border-border/50 shadow-none overflow-hidden flex flex-col min-h-[600px] hover:border-blue-500/20 transition-all">
-                <CardHeader className="bg-card border-b border-border/50 pb-6 flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-xl flex items-center gap-2 font-black text-foreground uppercase tracking-tight">
-                      <Users className="w-5 h-5 text-blue-500" />
-                      Student Roster Matrix
-                    </CardTitle>
-                    <CardDescription>
-                      {isFilterComplete ? `${filteredStudents.length} Students tracked in this recording cycle` : "Select all administrative filters to initialize the roster"}
-                    </CardDescription>
-                  </div>
-                  {isFilterComplete && (
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                      <input
-                        type="text"
-                        placeholder="Search by name, roll..."
-                        className="h-10 w-64 rounded-xl border border-border bg-secondary/30 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-card transition-all placeholder:text-muted-foreground/60"
-                        value={searchQuery}
-                        onChange={(e) => setSearchQuery(e.target.value)}
-                      />
-                    </div>
-                  )}
-                </CardHeader>
-
-                <CardContent className="p-0 flex-1 bg-card flex flex-col">
-                  {!isFilterComplete ? (
-                    <div className="flex-1 flex flex-col items-center justify-center p-12 text-center space-y-6">
-                      <div className="relative">
-                        <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full" />
-                        <div className="relative p-8 bg-blue-100 dark:bg-blue-900/30 rounded-3xl border-2 border-blue-200 dark:border-blue-800 shadow-xl">
-                          <Users className="w-16 h-16 text-blue-600 animate-pulse" />
-                        </div>
-                      </div>
-                      <div className="max-w-xs space-y-2">
-                        <h3 className="text-xl font-black text-foreground uppercase tracking-tight">Initialize Roster</h3>
-                        <p className="text-sm text-muted-foreground leading-relaxed">
-                          Specify Department, Year, Semester, and Course to populate the student matrix for this activity.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="grid grid-cols-1 divide-y divide-border/30">
-                      <AnimatePresence mode="popLayout">
-                        {filteredStudents.map((student, idx) => {
-                          const isException = !checklist[student.id];
-                          return (
-                            <motion.div
-                              key={student.id}
-                              initial={{ opacity: 0, y: 10 }}
-                              animate={{ opacity: 1, y: 0 }}
-                              transition={{ delay: idx * 0.01 }}
-                              className={`flex items-center justify-between p-4 px-6 transition-all group cursor-pointer ${isException ? 'bg-secondary/30' : 'hover:bg-secondary/20'}`}
-                              onClick={() => toggleStudent(student.id)}
-                            >
-                              <div className="flex items-center gap-4">
-                                <Avatar size="lg">
-                                  <AvatarImage src={(student as any).profile_image_url} />
-                                  <AvatarFallback>{student.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <p className="font-bold">{student.name}</p>
-                                  <p className="text-xs text-muted-foreground">{student.roll_number}</p>
-                                </div>
-                              </div>
-                              <div className={`flex items-center gap-2 px-3 py-1 rounded-full text-[10px] font-black uppercase border ${!isException ? labels.trueColor : labels.falseColor}`}>
-                                {!isException ? <Check className="w-3 h-3" /> : <X className="w-3 h-3" />}
-                                {!isException ? labels.true : labels.false}
-                              </div>
-                            </motion.div>
-                          );
-                        })}
-                      </AnimatePresence>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            ) : (
-              <Card className="border-border/50 shadow-none hover:border-blue-500/20 transition-all">
-                <CardHeader>
-                  <CardTitle className="text-xl font-black uppercase tracking-tight flex items-center gap-2">
-                    <Clock className="w-5 h-5 text-blue-500" />
-                    Activity Registry
+          <div className={type === 'attendance' ? 'lg:col-span-8 space-y-8' : 'hidden'}>
+            <Card className="border-border/50 shadow-none overflow-hidden flex flex-col min-h-[600px] hover:border-blue-500/20 transition-all">
+              <CardHeader className="bg-card border-b border-border/50 pb-6 flex flex-row items-center justify-between">
+                <div>
+                  <CardTitle className="text-xl flex items-center gap-2 font-black text-foreground uppercase tracking-tight">
+                    <Users className="w-5 h-5 text-blue-500" />
+                    Student Roster Matrix
                   </CardTitle>
-                  <CardDescription>Recent logs and administrative overrides</CardDescription>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <div className="divide-y divide-border/30">
-                    {isHistoryLoading ? (
-                      <div className="p-8 text-center"><Spinner /></div>
-                    ) : recentActivities.length === 0 ? (
-                      <div className="p-8 text-center text-muted-foreground italic text-sm">No recent activities found for this class.</div>
-                    ) : (
-                      recentActivities.map((activity) => (
-                        <div key={activity.id} className="p-4 px-6 flex items-center justify-between hover:bg-secondary/10 transition-colors">
-                          <div className="space-y-1">
-                            <p className="font-bold text-sm">{activity.title}</p>
-                            <div className="flex items-center gap-3">
-                              <Badge variant="outline" className="text-[9px] uppercase font-black">{activity.type}</Badge>
-                              <span className="text-[10px] text-muted-foreground flex items-center gap-1">
-                                <Calendar className="w-3 h-3" /> {new Date(activity.date).toLocaleDateString()}
-                              </span>
-                              {activity.due_date && (
-                                <span className="text-[10px] text-red-500 font-bold flex items-center gap-1">
-                                  <Clock className="w-3 h-3" /> Due: {new Date(activity.due_date).toLocaleString('en-US', { timeZone: 'Asia/Kolkata' })}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button 
-                              onClick={() => setEditingActivity(activity)}
-                              className="p-2 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-blue-600 rounded-lg transition-colors"
-                            >
-                              <Save className="w-4 h-4" />
-                            </button>
-                            <button 
-                              onClick={() => handleDeleteActivity(activity.id)}
-                              className="p-2 hover:bg-red-50 dark:hover:bg-red-900/30 text-red-600 rounded-lg transition-colors"
-                            >
-                              <X className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                  <CardDescription>
+                    {isFilterComplete ? `${filteredStudents.length} Students tracked in this recording cycle` : "Select all administrative filters to initialize the roster"}
+                  </CardDescription>
+                </div>
+                {isFilterComplete && (
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                    <input
+                      type="text"
+                      placeholder="Search by name, roll..."
+                      className="h-10 w-64 rounded-xl border border-border bg-secondary/30 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:bg-card transition-all placeholder:text-muted-foreground/60"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                    />
                   </div>
-                </CardContent>
-              </Card>
-            )}
+                )}
+              </CardHeader>
+
+              <CardContent className="p-0 flex-1 bg-card">
+                {!isFilterComplete ? (
+                  <div className="h-full flex flex-col items-center justify-center p-12 text-center space-y-6">
+                    <div className="relative">
+                      <div className="absolute inset-0 bg-blue-500/20 blur-3xl rounded-full" />
+                      <div className="relative p-8 bg-blue-100 dark:bg-blue-900/30 rounded-3xl border-2 border-blue-200 dark:border-blue-800 shadow-xl">
+                        <Users className="w-16 h-16 text-blue-600 animate-pulse" />
+                      </div>
+                    </div>
+                    <div className="max-w-xs space-y-2">
+                      <h3 className="text-xl font-black text-foreground uppercase tracking-tight">Sync Pending</h3>
+                      <p className="text-sm text-muted-foreground leading-relaxed">
+                        Configure your activity parameters on the left to initialize the roster for this period.
+                      </p>
+                    </div>
+                  </div>
+                ) : filteredStudents.length === 0 ? (
+                  <div className="h-full flex flex-col items-center justify-center p-12 text-center text-muted-foreground italic">
+                    No students found matching these specifics.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 p-6 overflow-y-auto max-h-[700px]">
+                    {filteredStudents.map((student) => {
+                      const isPresent = checklist[student.id];
+                      return (
+                        <motion.div
+                          key={student.id}
+                          layout
+                          onClick={() => toggleStudent(student.id)}
+                          className={cn(
+                            "group relative flex items-center gap-4 p-4 rounded-2xl border transition-all cursor-pointer",
+                            isPresent 
+                              ? "bg-emerald-50/50 border-emerald-200 shadow-sm" 
+                              : "bg-card border-border hover:border-blue-300"
+                          )}
+                        >
+                          <Avatar className="h-12 w-12 border-2 border-white dark:border-zinc-800 shadow-sm">
+                            <AvatarImage src={student.profile_image_url} alt={student.name} />
+                            <AvatarFallback className="font-bold bg-blue-100 text-blue-700">
+                              {student.name.charAt(0)}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-black text-sm text-foreground uppercase truncate tracking-tight">{student.name}</p>
+                            <p className="text-[10px] font-bold text-muted-foreground uppercase">{student.roll_number}</p>
+                          </div>
+                          <Badge 
+                            className={cn(
+                              "text-[10px] font-black uppercase tracking-widest px-3 py-1 border transition-all",
+                              isPresent ? labels.trueColor : labels.falseColor
+                            )}
+                          >
+                            {isPresent ? labels.true : labels.false}
+                          </Badge>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
 
-      {/* Edit Activity Modal */}
-      <AnimatePresence>
-        {editingActivity && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-            <motion.div 
-              initial={{ scale: 0.95, opacity: 0 }}
-              animate={{ scale: 1, opacity: 1 }}
-              exit={{ scale: 0.95, opacity: 0 }}
-              className="bg-card border border-border w-full max-w-md rounded-2xl shadow-2xl overflow-hidden"
-            >
-              <div className="p-6 border-b border-border/50 flex items-center justify-between">
-                <h3 className="font-black uppercase tracking-tight">Edit Activity Logs</h3>
-                <button onClick={() => setEditingActivity(null)}><X className="w-5 h-5" /></button>
-              </div>
-              <div className="p-6 space-y-4">
-                <div className="space-y-2">
-                  <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Title</Label>
-                  <Input 
-                    value={editingActivity.title} 
-                    onChange={(e) => setEditingActivity({...editingActivity, title: e.target.value})}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Activity Date</Label>
-                    <Input 
-                      type="date"
-                      value={editingActivity.date.split('T')[0]} 
-                      onChange={(e) => setEditingActivity({...editingActivity, date: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Due Date & Time</Label>
-                    <Input 
-                      type="datetime-local"
-                      value={editingActivity.due_date ? new Date(new Date(editingActivity.due_date).getTime() + (5.5 * 60 * 60 * 1000)).toISOString().slice(0, 16) : ''} 
-                      onChange={(e) => setEditingActivity({...editingActivity, due_date: e.target.value})}
-                    />
-                  </div>
-                  {editingActivity.type === 'assignment' && (
-                    <div className="space-y-2">
-                      <Label className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Max Marks</Label>
-                      <Input 
-                        type="number"
-                        value={editingActivity.max_marks || 100} 
-                        onChange={(e) => setEditingActivity({...editingActivity, max_marks: parseInt(e.target.value)})}
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
-              <div className="p-6 bg-secondary/20 flex gap-3">
-                <button 
-                  onClick={() => setEditingActivity(null)}
-                  className="flex-1 py-2 text-xs font-black uppercase rounded-xl border border-border hover:bg-card transition-colors"
-                >
-                  Cancel
-                </button>
-                <button 
-                  onClick={() => {
-                    const updatePayload: any = {
-                      title: editingActivity.title,
-                      date: editingActivity.date,
-                      time_range: editingActivity.time_range,
-                      max_marks: editingActivity.max_marks
-                    };
-                    
-                    if (editingActivity.due_date) {
-                      try {
-                        updatePayload.due_date = new Date(editingActivity.due_date).toISOString();
-                      } catch (e) {
-                        updatePayload.due_date = editingActivity.due_date;
-                      }
-                    }
-                    
-                    handleUpdateActivity(editingActivity.id, updatePayload);
-                  }}
-                  className="flex-1 py-2 text-xs font-black uppercase rounded-xl bg-blue-600 text-white hover:bg-black transition-colors"
-                >
-                  Save Changes
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
     </div>
   );
 }

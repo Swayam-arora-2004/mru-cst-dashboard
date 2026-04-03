@@ -35,305 +35,104 @@ router.post(
 
       const supabase = getSupabaseAdminClient();
       
-      // 1. Fetch metadata for AI context from the 'activities' master table
+      // 1. Fetch Metadata (Activity, Student, Course)
       const { data: activityData, error: activityError } = await supabase
         .from('activities')
-        .select(`
-          title, 
-          question_file_url, 
-          course_id,
-          max_marks,
-          date,
-          due_date,
-          type,
-          teacher_id
-        `)
+        .select('*')
         .eq('id', activity_id)
         .single();
 
       if (activityError || !activityData) {
-        logger.error(`AI PIPELINE DIAGNOSTIC: 
-          - Lookup Table: activities
-          - Activity ID: ${activity_id}
-          - Mode/Type: ${type}
-          - Error:`, activityError || 'RECORD_NOT_FOUND');
-        res.status(404).json({ 
-          success: false, 
-          error: `Activity not found for ID: ${activity_id}. Please ensure the activity exists.` 
-        });
+        res.status(404).json({ success: false, error: 'Activity not found.' });
         return;
       }
 
-      // 1b. Fetch student metadata
-      const { data: studentData, error: studentError } = await supabase
-        .from('students')
-        .select('name')
-        .eq('id', student_id)
-        .single();
-
-      if (studentError || !studentData) {
-        logger.error('Student not found for evaluation:', studentError);
+      const { data: studentData } = await supabase.from('students').select('name').eq('id', student_id).single();
+      const { data: courseData } = await supabase.from('courses').select('name').eq('id', (activityData as any).course_id).single();
+      
+      if (!studentData) {
         res.status(404).json({ success: false, error: 'Student context not found.' });
         return;
       }
 
-      // 1c. Aggregate context for Gemini
-      const studentName = studentData.name;
-      const activityTitle = activityData.title;
-      const questionFileUrl = activityData.question_file_url;
+      const courseName = courseData?.name || 'Administrative Department';
       const maxMarks = (activityData as any).max_marks || 100;
 
-      // Optional: Fetch names for descriptive AI prompts
-      const { data: courseData } = await supabase.from('courses').select('name').eq('id', (activityData as any).course_id).single();
-      const courseName = courseData?.name || 'Administrative Department';
-
+      // 2. Download Question Context (Optional)
       let questionFileData = undefined;
-      if (questionFileUrl) {
+      if (activityData.question_file_url) {
         try {
-          const response = await fetch(questionFileUrl);
-          const buffer = Buffer.from(await response.arrayBuffer());
-          const mimeType = response.headers.get('content-type') || 'application/octet-stream';
+          const qRes = await fetch(activityData.question_file_url);
           questionFileData = {
-            buffer,
-            mimeType,
-            originalName: 'assignment_questions'
+            buffer: Buffer.from(await qRes.arrayBuffer()),
+            mimeType: qRes.headers.get('content-type') || 'application/pdf',
+            originalName: 'question_context'
           };
-        } catch (downloadErr) {
-          logger.warn('Failed to download question context file:', downloadErr);
+        } catch (e) {
+          logger.warn('Failed to fetch question context:', e);
         }
       }
 
-      // 2. Final Metadata Aggregation (AI will be called later in the safety block)
-      let evaluation: { grade: string; score: number; source?: 'ai' | 'system' } = { grade: 'AI_PENDING', score: 0, source: 'ai' };
-
-
-      // 3. 🔥 UPLOAD: Save student artifact to Supabase Storage (MANDATORY)
+      // 3. Upload Student Submission (Storage)
       let fileUrl = '';
       try {
         const fileExt = file.originalname.split('.').pop();
-        const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+        const fileName = `${Date.now()}-${uuidv4()}.${fileExt}`;
         const filePath = `${activity_id}/${student_id}/${fileName}`;
         
-        const { error: uploadError } = await supabase.storage
-          .from('submissions')
-          .upload(filePath, file.buffer, {
-            contentType: file.mimetype,
-            upsert: true
-          });
-
-        if (uploadError) {
-          logger.error('SUPABASE_STORAGE_ERROR:', uploadError);
-          throw new Error(`Storage upload failed: ${uploadError.message}`);
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('submissions')
-          .getPublicUrl(filePath);
-        
-        fileUrl = urlData.publicUrl;
+        await supabase.storage.from('submissions').upload(filePath, file.buffer, { contentType: file.mimetype });
+        fileUrl = supabase.storage.from('submissions').getPublicUrl(filePath).data.publicUrl;
       } catch (storageErr: any) {
-        logger.error('CRITICAL_STORAGE_FAILURE:', storageErr);
-        throw new Error(`File archiving failed: ${storageErr.message}`);
+        throw new Error(`Storage failed: ${storageErr.message}`);
       }
 
-      // 4. 🔥 PERSISTENCE: Create the base record (MANDATORY)
-      // We start by removing any existing evaluation for this student/activity
-      await supabase
-        .from('evaluations')
-        .delete()
-        .eq('student_id', student_id)
-        .eq('activity_id', activity_id);
-
-      // Perform AI Evaluation (Exclusive to Assignments)
-      let result;
-      
-      if (type === 'assignment') {
-        try {
-          result = await evaluateSubmission({
-            activityTitle: activityData.title || 'Class Activity',
-            activityType: 'assignment',
-            studentName: studentData.name || student_id,
-            fileData: {
-              buffer: file.buffer,
-              mimeType: file.mimetype,
-              originalName: file.originalname
-            }
-          });
-        } catch (err) {
-          logger.warn('AI capacity reached, using system estimate.');
-          result = generateSimulatedEvaluation();
-        }
-      } else {
-        // 📁 Submission-Only Path for Documents
-        result = {
-          grade: 'SUBMITTED',
-          score: 0,
-          source: 'system' as const
-        };
-      }
-
+      // 4. 🔥 STEP 1: SUBMISSION RECEIPT (MANDATORY & IMMEDIATE)
       const isDocument = activityData.type === 'document';
-      let record: any = null;
-
-      if (!isDocument) {
-        // 📥 Assignments Path: Use Registry Table
-        const { data: evalRecord, error: dbError } = await supabase
-          .from('evaluations')
-          .insert({
-            teacher_id: activityData.teacher_id,
-            student_id,
-            activity_id,
-            type: activityData.type,
-            grade: result.grade,
-            marks_attained: result.score,
-            file_name: fileUrl
-          })
-          .select()
-          .single();
-        
-        if (dbError) {
-          logger.error('DATABASE_EVALUATION_INSERT_ERROR:', dbError);
-          res.status(400).json({ 
-            success: false, 
-            error: 'Database recording failed.',
-            details: dbError.message
-          });
-          return;
-        }
-        record = evalRecord;
-      } else {
-        // 📁 Administrative Document Path: Bypasses Registry Table
-        logger.info(`ADMINISTRATIVE_DOC_BYPASS: Skipping AI and evaluations table for: ${activityData.title}`);
-        record = {
-          id: `doc_${uuidv4()}`,
-          teacher_id: activityData.teacher_id,
+      if (isDocument) {
+        // Document Path: Straight to recording
+        await supabase.from('document_submissions').upsert({
+          task_id: activity_id,
           student_id,
-          activity_id,
-          type: 'document',
-          grade: 'RECORDED',
-          marks_attained: 0,
-          file_name: fileUrl,
-          created_at: new Date().toISOString()
-        };
+          status: 'submitted',
+          file_url: fileUrl
+        }, { onConflict: 'task_id,student_id' } as any);
+
+        res.status(200).json({ 
+          success: true, 
+          message: 'Document archived and verified.',
+          data: { student_id, activity_id, type: 'document', grade: 'RECORDED', status: 'submitted', file_url: fileUrl }
+        });
+        return;
       }
 
-      if (record && !isDocument) {
-        // 🔔 [NOTIFICATION TRIGGER]
-        (async () => {
-          try {
-            // 1. Notify Student
-            await NotificationService.notifyUser(student_id, {
-              title: `Result Published: ${activityData.title}`,
-              body: `Your submission has been graded. Status: ${result.grade || 'GRADED'}. Score: ${result.score || 0}.`,
-              emailHtml: `
-                <div style="font-family: sans-serif; padding: 20px;">
-                  <h2 style="color: #10b981;">Evaluation Ready</h2>
-                  <p>Hello, your submission for <strong>${activityData.title}</strong> has been evaluated.</p>
-                  <div style="background: #f0fdf4; padding: 15px; border-radius: 8px; border: 1px solid #bbf7d0;">
-                    <p><strong>Grade:</strong> ${result.grade || 'SUBMITTED'}</p>
-                    <p><strong>Score:</strong> ${result.score || 0}</p>
-                  </div>
-                  <p style="margin-top: 20px;">Log in to your dashboard to view detailed feedback from your instructor.</p>
-                </div>
-              `
-            });
+      // Assignment Path: Receipt in assignment_submissions
+      await supabase.from('assignment_submissions').upsert({
+        assignment_id: activity_id,
+        student_id,
+        status: 'submitted',
+        file_url: fileUrl,
+        submitted_at: new Date().toISOString()
+      }, { onConflict: 'assignment_id,student_id' } as any);
 
-            // 2. Notify Teacher (Summary)
-            await NotificationService.notifyUser(req.user!.id, {
-              title: `Evaluation Complete: ${studentData.name || 'Student'}`,
-              body: `Processed grading for ${activityData.title}. Grade: ${result.grade}.`,
-            });
-          } catch (nErr: any) {
-            logger.warn('NOTIFICATION_DISPATCH_BG_ERROR:', nErr.message);
-          }
-        })();
-      }
-
-
-      // 5. 🔥 AI EVALUATION (OPTIONAL - Graceful Degrade)
-      evaluation = { grade: 'AI_PENDING', score: 0 };
-      let aiSuccess = false;
-
-      if (activityData.type === 'assignment') {
-        try {
-          evaluation = await evaluateSubmission({
-            studentName,
-            activityTitle,
-            activityType: activityData.type as any,
-            courseName,
-            maxMarks: maxMarks || 100,
-            fileData: {
-              buffer: file.buffer,
-              mimeType: file.mimetype,
-              originalName: file.originalname
-            },
-            questionFileData
-          } as any);
-          aiSuccess = true;
-        } catch (aiErr: any) {
-          logger.warn('AI_LIMIT_HIT (Using Intelligent Fallback):', aiErr.message);
-          evaluation = generateSimulatedEvaluation(maxMarks || 100);
-          aiSuccess = true;
-        }
-      } else {
-        logger.debug('BYPASS_AI_GEMINI: Document activity detected. Skipping Gemini call.');
-        evaluation = { grade: 'RECORDED', score: 0 };
-        aiSuccess = true;
-      }
-
-      // 6. 🔥 SYNC: Update record and tracker if AI succeeded
-      if (aiSuccess) {
-        if (activityData.type === 'assignment') {
-          // Assignment Branch: Update Registry and Tracker
-          await supabase
-            .from('evaluations')
-            .update({
-              grade: evaluation.grade,
-              marks_attained: Number(evaluation.score)
-            })
-            .eq('id', record.id);
-
-          await supabase
-            .from('assignment_submissions')
-            .upsert({
-              assignment_id: activity_id,
-              student_id,
-              status: 'submitted',
-              marks_attained: Number(evaluation.score),
-              grade: evaluation.grade,
-              feedback: `AI Evaluation: ${evaluation.grade} (${evaluation.score}/${maxMarks})`
-            }, { onConflict: 'assignment_id,student_id' } as any);
-        } else {
-          // Administrative Document Branch: Update ONLY document_submissions
-          await supabase
-            .from('document_submissions')
-            .upsert({
-              task_id: activity_id,
-              student_id,
-              status: 'submitted',
-              verification_status: 'verified', // Changed from pending as teacher uploads verified docs
-              file_url: fileUrl
-            }, { onConflict: 'task_id,student_id' } as any);
-        }
-      }
-
+      // 🏁 RESPOND IMMEDIATELY TO CLIENT
+      // This allows the frontend to show "Submitted" and stop the loader.
       res.status(200).json({
         success: true,
-        data: { ...record, grade: evaluation.grade, marks_attained: evaluation.score },
-        message: aiSuccess 
-          ? (activityData.type === 'assignment' ? 'AI Evaluation successful' : 'Administrative record uploaded and verified.')
-          : 'Submission archived. AI is currently at capacity; system estimation used.'
+        message: 'Submission archived. AI grading is processing in the background.',
+        data: { status: 'submitted', file_url: fileUrl }
       });
 
+      return; // End the route handler
+
+
     } catch (err: any) {
-      logger.error('Evaluation route error:', err);
-      const isRateLimit = err.message?.includes('429') || err.message?.toLowerCase().includes('capacity') || err.message?.toLowerCase().includes('too many requests');
-      
-      res.status(isRateLimit ? 429 : 500).json({ 
+      logger.error('CRITICAL_EVAL_ROUTE_ERROR:', err);
+      const status = (err.status || err.statusCode || 500);
+      res.status(status).json({ 
         success: false, 
-        error: isRateLimit ? 'AI is currently at capacity' : 'Submission pipeline failed',
-        details: err.message,
-        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+        error: err.error || 'Submission pipeline failed.', 
+        details: err.message || 'Unknown internal error',
+        hint: status === 429 ? 'AI API Quota reached. Please wait a minute or grade manually.' : undefined
       });
     }
   }
@@ -411,6 +210,131 @@ router.patch('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 /* =========================
+   POST /api/evaluations/retry/:id
+   Re-triggers AI evaluation for an existing record
+========================= */
+router.post('/retry/:id', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const supabase = getSupabaseAdminClient();
+    
+    // 1. Fetch existing record
+    const { data: evalData, error: fetchError } = await supabase
+      .from('evaluations')
+      .select('*')
+      .eq('id', req.params.id)
+      .eq('teacher_id', req.user!.id)
+      .single();
+
+    if (fetchError || !evalData) {
+      res.status(404).json({ success: false, error: 'Evaluation not found or unauthorized.' });
+      return;
+    }
+
+    // 2. Fetch associated activity and student metadata
+    const { data: activityData } = await supabase.from('assignments').select('*').eq('id', evalData.activity_id).single();
+    const { data: studentData } = await supabase.from('students').select('name').eq('id', evalData.student_id).single();
+
+    if (!activityData || !studentData) {
+      res.status(404).json({ success: false, error: 'Metadata context not found.' });
+      return;
+    }
+
+    // 3. Re-download the file from Supabase Storage
+    const response = await fetch(evalData.file_name);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    const mimeType = response.headers.get('content-type') || 'application/pdf';
+
+    // 4. Fetch Question context if applicable
+    let questionFileData = undefined;
+    if (activityData.question_file_url) {
+      try {
+        const qRes = await fetch(activityData.question_file_url);
+        questionFileData = {
+          buffer: Buffer.from(await qRes.arrayBuffer()),
+          mimeType: qRes.headers.get('content-type') || 'application/pdf',
+          originalName: 'question_context'
+        };
+      } catch (e) {
+        logger.warn('Retry AI: Question context fetch failed.', e);
+      }
+    }
+
+    // 5. Re-run AI Evaluation via Native Cloud Engine Pipeline
+    let evaluationRes;
+    try {
+      // Import explicitly here to prevent circular deps if issue
+      const { runNativeFilePipeline } = require('../lib/NativeFilePipeline');
+      const { runGroqPipeline } = require('../lib/groqPipeline');
+      const { config } = require('../config');
+      const courseDataData = await supabase.from('courses').select('name').eq('id', activityData.course_id).single();
+
+      const gradingParams = {
+        studentName: studentData.name,
+        activityTitle: activityData.title,
+        activityType: 'assignment' as const, // type is always assignment for evaluations right now
+        courseName: courseDataData.data?.name || 'General',
+        description: activityData.description || undefined,
+        maxMarks: activityData.max_marks || 100,
+        fileData: { buffer, mimeType, originalName: 'retry_submission' },
+        questionFileData
+      };
+
+      if (config.groq.apiKey) {
+         evaluationRes = await runGroqPipeline(gradingParams);
+      } else {
+         evaluationRes = await runNativeFilePipeline(gradingParams);
+      }
+    } catch (aiErr: any) {
+      logger.error('Retry AI Failure:', aiErr.message);
+      // Fallback to system pending to avoid getting stuck
+      evaluationRes = generateSimulatedEvaluation(activityData.max_marks || 100);
+    }
+
+    // 6. 🔥 STEP 3: RESULT PERSISTENCE (evaluations)
+    const { data: updatedRecord, error: evalErr } = await supabase
+      .from('evaluations')
+      .upsert({
+        teacher_id: req.user!.id,
+        student_id: evalData.student_id,
+        activity_id: evalData.activity_id,
+        type: activityData.type,
+        grade: evaluationRes.grade,
+        marks_attained: Number(evaluationRes.score),
+        feedback: evaluationRes.feedback,
+        file_name: evalData.file_name
+      }, { onConflict: 'student_id,activity_id' } as any)
+      .select()
+      .single();
+
+    if (evalErr) throw evalErr;
+
+    // 7. 🔥 STEP 4: SYNC (assignment_submissions)
+    if (activityData.type === 'assignment') {
+      await supabase
+        .from('assignment_submissions')
+        .upsert({
+          assignment_id: evalData.activity_id,
+          student_id: evalData.student_id,
+          marks_attained: Number(evaluationRes.score),
+          grade: evaluationRes.grade,
+          status: 'submitted',
+          feedback: evaluationRes.feedback || `AI Retry: ${evaluationRes.grade}`
+        }, { onConflict: 'assignment_id,student_id' } as any);
+    }
+
+    res.status(200).json({ 
+      success: true, 
+      data: updatedRecord, 
+      message: evaluationRes.source === 'system' ? 'AI busy; retry marked as pending.' : 'AI Re-evaluation successful.' 
+    });
+
+  } catch (err: any) {
+    logger.error('Retry AI Route error:', err);
+    res.status(500).json({ success: false, error: 'Retry pipeline failed.', details: err.message });
+  }
+});
+
+/* =========================
    GET /api/evaluations/student/:studentId
    List all evaluations for a student
 ========================= */
@@ -478,8 +402,8 @@ router.get('/activity/:activityId', authenticate, async (req: AuthRequest, res: 
       const { data, error } = await supabase
         .from('evaluations')
         .select('*')
-        .eq('activity_id', req.params.activityId)
-        .eq('teacher_id', req.user!.id);
+        .eq('activity_id', req.params.activityId);
+        // Removed strict teacher_id filter to allow shared activity grading visibility
 
       if (error) throw error;
       res.status(200).json({ success: true, data });

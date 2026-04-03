@@ -3,6 +3,7 @@ import { getSupabaseAdminClient } from '../lib/supabase';
 import { authenticate } from '../middleware/auth';
 import { AuthRequest, ApiResponse } from '../types';
 import logger from '../lib/logger';
+import { isModelsLoaded } from '../lib/faceRecognition';
 
 const router = Router();
 
@@ -182,6 +183,7 @@ router.get('/academic-info', authenticate, async (req: AuthRequest, res: Respons
         years: years.length > 0 ? years : [1, 2, 3, 4],
         semesters: semesters.length > 0 ? semesters : [1, 2, 3, 4, 5, 6, 7, 8],
         specializations,
+        ai_status: isModelsLoaded() ? 'ready' : 'loading'
       },
     };
     res.status(200).json(response);
@@ -235,6 +237,7 @@ router.get('/stats', authenticate, async (req: AuthRequest, res: Response): Prom
         },
         recentStudents: recentStudents || [],
         recentCourses: recentCourses || [],
+        ai_status: isModelsLoaded() ? 'ready' : 'loading'
       },
     };
     res.status(200).json(response);

@@ -20,10 +20,22 @@ export interface ApiResponse<T = unknown> {
   };
 }
 
-class ApiError extends Error {
-  constructor(public status: number, message: string) {
+export class ApiError extends Error {
+  public status: number;
+  public error?: string;
+  public details?: string;
+  public hint?: string;
+  public code?: string;
+
+  constructor(status: number, data: any) {
+    const message = data?.error || data?.message || "Something went wrong";
     super(message);
+    this.status = status;
     this.name = "ApiError";
+    this.error = data?.error;
+    this.details = data?.details;
+    this.hint = data?.hint;
+    this.code = data?.code;
   }
 }
 
@@ -35,7 +47,6 @@ export async function api<T>(
 
   let token = typeof window !== "undefined" ? localStorage.getItem("token") : null;
 
-  // Fallback: Check Zustand's persisted storage if direct token is null
   if (!token && typeof window !== "undefined") {
     const authStorage = localStorage.getItem("auth-storage");
     if (authStorage) {
@@ -72,10 +83,18 @@ export async function api<T>(
 
   try {
     const response = await fetch(`${API_URL}${endpoint}`, config);
-    const data = await response.json();
+    
+    let data;
+    const contentType = response.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      data = await response.json();
+    } else {
+      const text = await response.text();
+      data = { error: text || response.statusText };
+    }
 
     if (!response.ok) {
-      throw new ApiError(response.status, data.error || "Something went wrong");
+      throw new ApiError(response.status, data);
     }
 
     return data;
@@ -83,7 +102,8 @@ export async function api<T>(
     if (error instanceof ApiError) {
       throw error;
     }
-    throw new ApiError(500, "Network error. Please try again.");
+    console.error("Fetch underlying error:", error);
+    throw new ApiError(500, { error: "Network error or server crash. Please try again." });
   }
 }
 
@@ -144,7 +164,9 @@ export const studentsApi = {
     if (params?.year) query.set("year", params.year.toString());
     if (params?.semester) query.set("semester", params.semester.toString());
     if (params?.department_id) query.set("department_id", params.department_id);
-    if (params?.specialization) query.set("specialization", params.specialization);
+    if (params?.specialization && params.specialization !== 'General') {
+      query.set("specialization", params.specialization);
+    }
     return api<Student[]>(`/students?${query.toString()}`);
   },
   
@@ -192,6 +214,9 @@ export const coursesApi = {
     if (params?.department_id) query.set("department_id", params.department_id);
     if (params?.semester) query.set("semester", params.semester.toString());
     if (params?.year) query.set("year", params.year.toString());
+    if (params?.specialization && params.specialization !== 'General') {
+      query.set("specialization", params.specialization);
+    }
     return api<Course[]>(`/courses?${query.toString()}`);
   },
   
@@ -482,6 +507,7 @@ export interface Course {
   department_id: string;
   semester: number;
   year: number;
+  specialization?: string;
   class_id?: string;
   is_active: boolean;
   created_at: string;
@@ -497,6 +523,7 @@ export interface CourseFilters {
   department_id?: string;
   semester?: number;
   year?: number;
+  specialization?: string;
 }
 
 export interface CreateCourseData {
@@ -508,6 +535,7 @@ export interface CreateCourseData {
   department_id: string;
   semester: number;
   year: number;
+  specialization?: string;
   class_id?: string;
 }
 
@@ -674,6 +702,7 @@ export interface Activity {
   duration?: number;
   time_range?: string;
   description?: string;
+  specialization?: string;
   // Included records/submissions
   attendance_records?: ActivityRecord[];
   assignment_submissions?: ActivityRecord[];
@@ -690,12 +719,19 @@ export interface CreateActivityData {
   due_date?: string;
   duration?: number;
   time_range?: string;
+  specialization?: string;
 }
 
 export const activitiesApi = {
-  getAll: (courseId?: string) => {
-    const query = courseId ? `?course_id=${courseId}` : '';
-    return api<Activity[]>(`/activities${query}`);
+  getAll: (params?: { course_id?: string, year?: string, semester?: string, class_id?: string, specialization?: string, type?: string }) => {
+    const query = new URLSearchParams();
+    if (params?.course_id) query.set("course_id", params.course_id);
+    if (params?.year) query.set("year", params.year);
+    if (params?.semester) query.set("semester", params.semester);
+    if (params?.class_id) query.set("class_id", params.class_id);
+    if (params?.specialization) query.set("specialization", params.specialization);
+    if (params?.type) query.set("type", params.type);
+    return api<Activity[]>(`/activities?${query.toString()}`);
   },
   
   create: (data: CreateActivityData | FormData) =>
@@ -707,13 +743,14 @@ export const activitiesApi = {
     
   getMonthlyAttendanceStats: () => api<any[]>("/activities/stats/attendance/monthly"),
 
-  getAttendanceHistory: (date: string, courseId?: string, year?: string, semester?: string, classId?: string, timeRange?: string) => {
+  getAttendanceHistory: (date: string, courseId?: string, year?: string, semester?: string, classId?: string, timeRange?: string, specialization?: string) => {
     const query = new URLSearchParams({ date });
     if (courseId) query.append("course_id", courseId);
     if (year) query.append("year", year);
     if (semester) query.append("semester", semester);
     if (classId) query.append("class_id", classId);
     if (timeRange) query.append("time_range", timeRange);
+    if (specialization) query.append("specialization", specialization);
     return api<any[]>(`/activities/attendance/history?${query.toString()}`);
   },
 
@@ -764,6 +801,11 @@ export const evaluationsApi = {
     api<Evaluation>(`/evaluations/${id}`, {
       method: "PATCH",
       body: data
+    }),
+
+  retry: (id: string) =>
+    api<Evaluation>(`/evaluations/retry/${id}`, {
+      method: "POST"
     }),
 
   delete: (id: string) =>

@@ -106,7 +106,11 @@ export const NotificationService = {
       logger.info(`Email sent: ${info.messageId}`);
       return { success: true, messageId: info.messageId, previewUrl };
     } catch (err: any) {
-      logger.error('EMAIL_DISPATCH_FAILURE:', err.message);
+      if (err.message?.includes('535') && (process.env.SMTP_USER === 'test@ethereal.email' || !process.env.SMTP_USER)) {
+        logger.warn('📧 Email Notifications are currently using default/test credentials. (Silence 535 auth error)');
+      } else {
+        logger.error('EMAIL_DISPATCH_FAILURE:', err.message);
+      }
       return { success: false, error: err.message };
     }
   },

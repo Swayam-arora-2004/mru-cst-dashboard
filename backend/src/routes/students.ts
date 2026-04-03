@@ -554,13 +554,22 @@ router.post('/bulk-photos', authenticate, bulkPhotoUpload.array('photos', 10), a
           .from('student-photos')
           .getPublicUrl(filePath);
 
-        // 4. Update Student (image upload only for production stability)
+        // 4. Update Student (image upload and optional face encoding)
+        const encodingsRaw = req.body.encodings ? JSON.parse(req.body.encodings) : {};
+        const faceEncoding = encodingsRaw[file.originalname];
+        
+        const updatePayload: any = {
+          profile_image_url: publicUrl,
+          updated_at: new Date().toISOString()
+        };
+        
+        if (faceEncoding) {
+          updatePayload.face_encoding = faceEncoding;
+        }
+
         const { error: updateError } = await supabase
           .from('students')
-          .update({
-            profile_image_url: publicUrl,
-            updated_at: new Date().toISOString()
-          })
+          .update(updatePayload)
           .eq('id', student.id);
 
         if (updateError) throw updateError;

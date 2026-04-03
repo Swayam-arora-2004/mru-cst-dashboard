@@ -20,6 +20,7 @@ import { debounce, formatDate } from "@/lib/utils";
 import { API_CONFIG } from "@/lib/constants";
 import { getSemesterOptions, getYearForSemester } from "@/lib/yearSemesterUtils";
 import * as faceapi from '@vladmandic/face-api';
+import { getSpecializations } from "@/lib/specializations";
 
 export default function StudentsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -385,21 +386,60 @@ export default function StudentsPage() {
   const handleBulkPhotoUpload = async () => {
     if (bulkPhotoFiles.length === 0) return;
     setIsUploadingPhotos(true);
-    setBulkPhotoResults(null);
+    setBulkPhotoResults({ successCount: 0, failCount: 0, errors: [] });
+    
     try {
-      const formData = new FormData();
-      bulkPhotoFiles.forEach(file => {
-        formData.append("photos", file);
-      });
-      
-      const response = await studentsApi.uploadBulkPhotos(formData);
-      if (response.success) {
-        setBulkPhotoResults((response as any).results);
-        toast.success(response.message);
-        fetchStudents();
+      const BATCH_SIZE = 10;
+      const totalFiles = bulkPhotoFiles.length;
+      const aggregatedResults = {
+        successCount: 0,
+        failCount: 0,
+        errors: [] as string[]
+      };
+
+      for (let i = 0; i < totalFiles; i += BATCH_SIZE) {
+        const batch = bulkPhotoFiles.slice(i, i + BATCH_SIZE);
+        const formData = new FormData();
+        const batchEncodings: Record<string, number[]> = {};
+
+        toast.info(`AI Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(totalFiles / BATCH_SIZE)}...`);
+
+        for (const file of batch) {
+          formData.append("photos", file);
+          
+          if (modelsLoaded) {
+            try {
+              const img = await faceapi.bufferToImage(file);
+              const detection = await faceapi.detectSingleFace(img, new faceapi.SsdMobilenetv1Options({ minConfidence: 0.3 }))
+                                      .withFaceLandmarks()
+                                      .withFaceDescriptor();
+              if (detection) {
+                batchEncodings[file.name] = Array.from(detection.descriptor);
+              }
+            } catch (err) {
+              console.error(`Encoding failed for ${file.name}:`, err);
+            }
+          }
+        }
+
+        formData.append("encodings", JSON.stringify(batchEncodings));
+        
+        const response = await studentsApi.uploadBulkPhotos(formData);
+        if (response.success && (response as any).results) {
+          const results = (response as any).results;
+          aggregatedResults.successCount += results.successCount || 0;
+          aggregatedResults.failCount += results.failCount || 0;
+          if (results.errors) {
+            aggregatedResults.errors.push(...results.errors);
+          }
+        }
       }
+      
+      setBulkPhotoResults(aggregatedResults);
+      toast.success(`Successfully processed ${totalFiles} photos in batches.`);
+      fetchStudents();
     } catch (err: any) {
-      toast.error(err.message || "Photo upload failed");
+      toast.error(err.message || "Bulk photo upload failed during batch processing.");
     } finally {
       setIsUploadingPhotos(false);
     }
@@ -563,9 +603,10 @@ export default function StudentsPage() {
           // hint={formData.year ? `Year ${formData.year} semesters only` : "Select year first"}
         />
       </div>
-      <Input
+      <Select
         label="Specialization (Optional)"
-        placeholder="e.g., Full Stack Development"
+        placeholder="Select specialization"
+        options={getSpecializations(departments.find(d => d.id === formData.department_id)?.name || '').map(s => ({ value: s, label: s }))}
         value={formData.specialization}
         onChange={(e) => setFormData({ ...formData, specialization: e.target.value })}
       />
@@ -704,9 +745,13 @@ export default function StudentsPage() {
                         setPagination((prev) => ({ ...prev, page: 1 }));
                       }}
                     />
-                    <Input
+                    <Select
                       label="Specialization"
-                      placeholder="e.g. AI-ML, Cloud"
+                      placeholder="All specializations"
+                      options={[
+                        { value: "", label: "All specializations" },
+                        ...getSpecializations(departments.find(d => d.id === selectedDepartment)?.name || '').map(s => ({ value: s, label: s }))
+                      ]}
                       value={selectedSpecialization}
                       onChange={(e) => {
                         setSelectedSpecialization(e.target.value);

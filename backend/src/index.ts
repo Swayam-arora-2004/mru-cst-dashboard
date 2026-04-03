@@ -24,6 +24,7 @@ import evaluationsRoutes from './routes/evaluations';
 import notificationsRoutes from './routes/notifications';
 import { loadModels } from './lib/faceRecognition';
 import { initCronJobs } from './lib/cron';
+import { startEvaluationWorker } from './workers/evaluationWorker';
 
 // Validate environment variables
 validateConfig();
@@ -160,6 +161,9 @@ app.listen(PORT, () => {
 
   // ⏰ Initialize Automated Schedulers (Weekly Reports, etc.)
   initCronJobs();
+
+  // 🚀 Start the independent Daemon Worker for 1000% safe AI grading
+  startEvaluationWorker();
 });
 
 export default app;

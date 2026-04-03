@@ -242,180 +242,98 @@ function buildDocx(sections: DocumentSection[], title: string): Document {
   });
 }
 
-function buildPdfHtml(sections: DocumentSection[], title: string): string {
-  const rows = sections.map((section) => {
-    switch (section.type) {
-      case 'heading1':
-        return `<h1>${escHtml(section.content)}</h1>`;
+/**
+ * LIGHTWEIGHT PDF GENERATION (No Puppeteer/Chromium)
+ * Uses pdfkit — pure JS, memory-efficient, fast. 
+ */
+async function buildPdfBuffer(sections: DocumentSection[], title: string): Promise<Buffer> {
+  const PDFDocument = (await import('pdfkit')).default;
+  
+  return new Promise((resolve, reject) => {
+    const doc = new PDFDocument({ 
+      size: 'A4', 
+      margin: 72, // 1 inch
+      bufferPages: true 
+    });
+    const chunks: Buffer[] = [];
 
-      case 'heading2':
-        return `<h2>${escHtml(section.content)}</h2>`;
+    doc.on('data', chunk => chunks.push(chunk));
+    doc.on('end', () => resolve(Buffer.concat(chunks)));
+    doc.on('error', reject);
 
-      case 'paragraph':
-        return `<p>${escHtml(section.content)}</p>`;
+    // Title / Heading 1
+    doc.font('Times-Bold').fontSize(14).text(title.toUpperCase(), { align: 'center', underline: true });
+    doc.moveDown(1.5);
 
-      case 'list':
-        return `<ul>${(section.items || []).map((i) => `<li>${escHtml(i)}</li>`).join('')}</ul>`;
+    for (const section of sections) {
+      switch (section.type) {
+        case 'heading1':
+          if (section.content.toUpperCase() !== title.toUpperCase()) {
+            doc.font('Times-Bold').fontSize(14).text(section.content, { align: 'center' });
+            doc.moveDown(1);
+          }
+          break;
 
-      case 'table': {
-        if (!section.rows?.length) return '';
-        const [header, ...data] = section.rows;
-        return `<table>
-          <thead><tr>${header.map((h) => `<th>${escHtml(h)}</th>`).join('')}</tr></thead>
-          <tbody>${data.map((row) => `<tr>${row.map((c) => `<td>${escHtml(c)}</td>`).join('')}</tr>`).join('')}</tbody>
-        </table>`;
+        case 'heading2':
+          doc.font('Times-Bold').fontSize(12).text(section.content);
+          doc.moveDown(0.5);
+          break;
+
+        case 'paragraph':
+          doc.font('Times-Roman').fontSize(12).text(section.content, { align: 'justify', lineGap: 2 });
+          doc.moveDown(0.8);
+          break;
+
+        case 'list':
+          if (section.items?.length) {
+            section.items.forEach(item => {
+              doc.font('Times-Roman').fontSize(12).text(`  •  ${item}`, { indent: 10 });
+            });
+            doc.moveDown(0.8);
+          }
+          break;
+
+        case 'table':
+          if (section.rows?.length) {
+            const startX = doc.x;
+            const startY = doc.y;
+            const colWidth = (doc.page.width - doc.page.margins.left - doc.page.margins.right) / section.rows[0].length;
+            const rowHeight = 25;
+
+            section.rows.forEach((row, ri) => {
+              // Add page if needed
+              if (doc.y + rowHeight > doc.page.height - doc.page.margins.bottom) {
+                doc.addPage();
+              }
+
+              const y = doc.y;
+              row.forEach((cell, ci) => {
+                const x = startX + (ci * colWidth);
+                
+                // Cell Border
+                doc.rect(x, y, colWidth, rowHeight).stroke();
+                
+                // Cell Fill for Header
+                if (ri === 0) {
+                  doc.save().fillColor('#1a1a2e').rect(x + 0.5, y + 0.5, colWidth - 1, rowHeight - 1).fill().restore();
+                  doc.fillColor('white').font('Times-Bold').fontSize(10);
+                } else {
+                  doc.fillColor('black').font('Times-Roman').fontSize(10);
+                }
+
+                doc.text(String(cell), x + 5, y + 7, { width: colWidth - 10, align: 'center' });
+              });
+              doc.y = y + rowHeight;
+            });
+            doc.moveDown(1);
+          }
+          break;
       }
-
-      default:
-        return '';
     }
+
+    doc.end();
   });
-
-  return `<!DOCTYPE html>
-<html>
-<head>
-<meta charset="utf-8"/>
-<title>${escHtml(title)}</title>
-<style>
-  @page { size: A4; margin: 25mm; }
-  * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: "Times New Roman", serif; font-size: 12pt; line-height: 1; color: #000; }
-  h1 {
-    font-size: 14pt; font-weight: bold; text-align: center;
-    margin-bottom: 16pt; margin-top: 20pt; line-height: 2;
-    border-bottom: 2px solid #000; padding-bottom: 6pt;
-  }
-  h2 {
-    font-size: 12pt; font-weight: bold;
-    margin-top: 14pt; margin-bottom: 12pt; line-height: 1.5;
-  }
-  p { font-size: 12pt; margin-bottom: 6pt; line-height: 1; }
-  ul { padding-left: 20pt; margin-bottom: 8pt; }
-  ul li { font-size: 12pt; margin-bottom: 4pt; line-height: 1; }
-  table { width: 100%; border-collapse: collapse; margin-bottom: 16pt; font-size: 11pt; }
-  thead tr { background: #1a1a2e; color: #fff; }
-  thead th { padding: 6pt 8pt; text-align: center; font-weight: bold; border: 1pt solid #000; }
-  tbody tr:nth-child(even) { background: #f8f8f8; }
-  tbody td { padding: 5pt 8pt; text-align: center; border: 1pt solid #ccc; }
-</style>
-</head>
-<body>
-${rows.join('\n')}
-</body>
-</html>`;
 }
-
-function escHtml(str: string): string {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
-
-/* ===========================================================
-   POST /api/documents/generate
-   Accepts: multipart form with fields + optional file uploads
-   Returns: { sections: DocumentSection[], title: string }
-   =========================================================== */
-router.post(
-  '/generate',
-  authenticate,
-  upload.array('files', 10),
-  async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-      const {
-        documentType,
-        subject,
-        subjectCode,
-        topic,
-        department,
-        year,
-        semester,
-        courseOutcomes,
-        programOutcomes,
-        customPrompt,
-        institution,
-      } = req.body;
-
-      if (!documentType) {
-        res.status(400).json({ success: false, error: 'documentType is required' });
-        return;
-      }
-
-      const files = req.files as Express.Multer.File[] | undefined;
-      const uploadedFiles = files?.map((f) => ({
-        buffer: f.buffer,
-        mimeType: f.mimetype,
-        originalName: f.originalname,
-      }));
-
-      const user = req.user!;
-
-      const params: GenerateDocumentParams = {
-        documentType,
-        subject,
-        subjectCode,
-        topic,
-        department,
-        year,
-        semester,
-        courseOutcomes,
-        programOutcomes,
-        customPrompt,
-        facultyName: user.name,
-        institution: institution || 'Manav Rachna University, Faridabad',
-        uploadedFiles,
-      };
-
-      const sections = await generateAcademicDocument(params);
-      const titleSection = sections.find((s) => s.type === 'heading1');
-      const title = titleSection?.content || subject || 'Academic Document';
-
-      const response: ApiResponse = {
-        success: true,
-        data: { sections, title },
-        message: `Document generated: ${sections.length} sections`,
-      };
-      res.status(200).json(response);
-    } catch (error) {
-      logger.error('Document generation route error:', error);
-      const msg = error instanceof Error ? error.message : 'Document generation failed';
-      res.status(500).json({ success: false, error: msg });
-    }
-  }
-);
-
-/* ===========================================================
-   POST /api/documents/download/docx
-   Accepts: { sections, title }
-   Returns: .docx file stream
-   =========================================================== */
-router.post(
-  '/download/docx',
-  authenticate,
-  async (req: AuthRequest, res: Response): Promise<void> => {
-    try {
-      const { sections, title } = req.body as { sections: DocumentSection[]; title: string };
-
-      if (!sections?.length) {
-        res.status(400).json({ success: false, error: 'No sections provided' });
-        return;
-      }
-
-      const doc = buildDocx(sections, title || 'document');
-      const buffer = await Packer.toBuffer(doc);
-
-      const safeTitle = (title || 'document').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
-      res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.docx"`);
-      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document');
-      res.send(buffer);
-    } catch (error) {
-      logger.error('DOCX generation error:', error);
-      res.status(500).json({ success: false, error: 'Failed to generate DOCX file' });
-    }
-  }
-);
 
 /* ===========================================================
    POST /api/documents/download/pdf
@@ -434,18 +352,8 @@ router.post(
         return;
       }
 
-      const html = buildPdfHtml(sections, title || 'document');
-
-      // Dynamic import to avoid startup overhead
-      const htmlPdf = await import('html-pdf-node');
-      const file = { content: html };
-      const options = {
-        format: 'A4',
-        margin: { top: '25mm', right: '25mm', bottom: '25mm', left: '25mm' },
-        printBackground: true,
-      };
-
-      const pdfBuffer = await htmlPdf.generatePdf(file, options);
+      // 🚀 Performance: Using lightweight PDFKit (No Chromium/Puppeteer)
+      const pdfBuffer = await buildPdfBuffer(sections, title || 'document');
 
       const safeTitle = (title || 'document').replace(/[^a-zA-Z0-9 _-]/g, '').trim().replace(/\s+/g, '_');
       res.setHeader('Content-Disposition', `attachment; filename="${safeTitle}.pdf"`);
@@ -453,7 +361,7 @@ router.post(
       res.send(pdfBuffer);
     } catch (error) {
       logger.error('PDF generation error:', error);
-      res.status(500).json({ success: false, error: 'Failed to generate PDF file' });
+      res.status(500).json({ success: false, error: 'Failed to generate PDF file. Deployment limit reached?' });
     }
   }
 );

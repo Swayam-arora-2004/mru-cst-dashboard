@@ -13,6 +13,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { useAuthStore } from "@/store/authStore";
 import { generalApi, Department } from "@/lib/api";
 import { ThemeToggle } from "@/components/ui/theme-toggle";
+import { getSpecializations } from "@/lib/specializations";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -37,7 +38,7 @@ export default function RegisterPage() {
         router.push("/dashboard");
       }
     });
-    
+
     // Fetch departments
     generalApi.getDepartments().then((res) => {
       if (res.success && res.data) {
@@ -48,7 +49,7 @@ export default function RegisterPage() {
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
-    
+
     setFormData((prev) => {
       // If department is changed, clear specialization
       if (name === "department_id") {
@@ -108,33 +109,10 @@ export default function RegisterPage() {
     { value: "Lab Coordinator", label: "Lab Coordinator" },
   ];
 
-  const specializationOptions: Record<string, { value: string; label: string }[]> = {
-    "Computer Science and Engineering (Specialization)": [
-      { value: "AI & Machine Learning", label: "AI & Machine Learning" },
-      { value: "Data Science", label: "Data Science" },
-      { value: "Cybersecurity", label: "Cybersecurity" },
-      { value: "Cloud Computing", label: "Cloud Computing" },
-      { value: "Blockchain Technology", label: "Blockchain Technology" },
-    ],
-    "Electronics and Communication Engineering (Specialization)": [
-      { value: "VLSI Design", label: "VLSI Design" },
-      { value: "Embedded Systems", label: "Embedded Systems" },
-      { value: "IoT", label: "IoT" },
-      { value: "Robotics", label: "Robotics" },
-      { value: "Artificial Intelligence", label: "Artificial Intelligence" },
-    ],
-    "Electronic and Electrical Engineering (Specialization)": [
-      { value: "Power Electronics", label: "Power Electronics" },
-      { value: "Control Systems", label: "Control Systems" },
-      { value: "Renewable Energy Systems", label: "Renewable Energy Systems" },
-      { value: "VLSI Design", label: "VLSI Design" },
-      { value: "Robotics", label: "Robotics" },
-      { value: "Communication Engineering", label: "Communication Engineering" },
-    ]
-  };
-
   const selectedDepartmentObj = departments.find(d => d.id === formData.department_id);
-  const activeSpecializations = selectedDepartmentObj ? specializationOptions[selectedDepartmentObj.name] : null;
+  const activeSpecializations = selectedDepartmentObj 
+    ? getSpecializations(selectedDepartmentObj.name).map(s => ({ value: s, label: s }))
+    : null;
 
   return (
     <main className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-background to-secondary p-4 py-12">
@@ -255,7 +233,7 @@ export default function RegisterPage() {
                 value={formData.department_id}
                 onChange={handleChange}
               />
-              
+
               {activeSpecializations && (
                 <Select
                   name="specialization"

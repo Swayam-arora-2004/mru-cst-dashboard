@@ -19,7 +19,8 @@ import {
   FolderOpen,
   Filter,
   FileText,
-  CheckCircle2
+  CheckCircle2,
+  RefreshCw
 } from "lucide-react";
 import { Header } from "@/components/layout/header";
 import { 
@@ -52,6 +53,7 @@ import {
 } from "@/lib/api";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { getSpecializations } from "@/lib/specializations";
 
 export default function SubmissionsPage() {
   const [students, setStudents] = useState<Student[]>([]);
@@ -67,12 +69,23 @@ export default function SubmissionsPage() {
   const [selectedYear, setSelectedYear] = useState("1");
   const [selectedSemester, setSelectedSemester] = useState("1");
   const [selectedClass, setSelectedClass] = useState("");
+  const [selectedSpecialization, setSelectedSpecialization] = useState<string>("");
+  const [debouncedSpecialization, setDebouncedSpecialization] = useState<string>("");
   const [classes, setClasses] = useState<Class[]>([]);
+  const [specializations, setSpecializations] = useState<string[]>([]);
 
   // Selection State
   const [courseId, setCourseId] = useState("");
   const [activityId, setActivityId] = useState("");
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Debounce Specialization
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSpecialization(selectedSpecialization);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [selectedSpecialization]);
 
   // Scoring State
   const [editingEval, setEditingEval] = useState<string | null>(null); 
@@ -97,12 +110,16 @@ export default function SubmissionsPage() {
   useEffect(() => {
     const fetchBaseData = async () => {
       try {
-        const [deptRes, classRes] = await Promise.all([
+        const [deptRes, classRes, academicRes] = await Promise.all([
           generalApi.getDepartments(),
-          generalApi.getClasses() // Corrected
+          generalApi.getClasses(),
+          generalApi.getAcademicInfo()
         ]);
         if (deptRes.success) setDepartments(deptRes.data!);
         if (classRes.success) setClasses(classRes.data!);
+        if (academicRes.success && academicRes.data) {
+          setSpecializations(academicRes.data.specializations || []);
+        }
       } catch (err) {
         toast.error("Failed to load department filters.");
       }
@@ -110,15 +127,36 @@ export default function SubmissionsPage() {
     fetchBaseData();
   }, []);
 
-  // 2. Filter-driven data updates
+  const fetchEvaluations = async () => {
+    if (!activityId) return;
+    try {
+      const res = await evaluationsApi.getForActivity(activityId);
+      if (res.success) {
+        const evals: Record<string, Evaluation> = {};
+        res.data?.forEach(e => {
+          evals[e.student_id] = e;
+        });
+        setActivityEvaluations(evals);
+      }
+    } catch (err) {
+      console.error("Failed to load evaluations.");
+    }
+  };
+
+  // 2. Filter-driven data updates & Background Polling
   useEffect(() => {
     const fetchCourses = async () => {
-      if (!selectedDepartment) return;
+      if (!debouncedSpecialization) {
+        setCourses([]);
+        setCourseId("");
+        return;
+      }
       try {
         const res = await coursesApi.getAll({
           department_id: selectedDepartment,
           year: parseInt(selectedYear),
-          semester: parseInt(selectedSemester)
+          semester: parseInt(selectedSemester),
+          specialization: debouncedSpecialization || undefined
         });
         if (res.success) {
           setCourses(res.data || []);
@@ -129,12 +167,43 @@ export default function SubmissionsPage() {
       }
     };
     fetchCourses();
-  }, [selectedDepartment, selectedYear, selectedSemester]);
+  }, [selectedDepartment, selectedYear, selectedSemester, debouncedSpecialization]);
+
+  useEffect(() => {
+    fetchEvaluations();
+    
+    // 🕵️ BACKGROUND POLLING: 
+    // If we're on the Submissions Page, refresh every 10s to see background grading progress
+    const pollInterval = setInterval(() => {
+      fetchEvaluations();
+    }, 10000);
+
+    return () => clearInterval(pollInterval);
+  }, [activityId]);
+  
+  // Clear course selection when switching modes to prevent lingering filters
+  useEffect(() => {
+    if (mode === 'document') {
+      setCourseId("");
+    }
+  }, [mode]);
 
   useEffect(() => {
     const fetchFilteredActivities = async () => {
+      if (!debouncedSpecialization) {
+        setActivities([]);
+        setActivityId("");
+        return;
+      }
       try {
-        const res = await activitiesApi.getAll(courseId); // Still course-based
+        const res = await activitiesApi.getAll({
+          course_id: mode === 'assignment' ? (courseId || undefined) : undefined,
+          year: selectedYear,
+          semester: selectedSemester,
+          class_id: selectedClass || undefined,
+          specialization: debouncedSpecialization || undefined,
+          type: mode
+        });
         if (res.success) {
           setActivities(res.data || []);
         }
@@ -143,7 +212,7 @@ export default function SubmissionsPage() {
       }
     };
     fetchFilteredActivities();
-  }, [courseId]);
+  }, [mode, courseId, selectedYear, selectedSemester, selectedClass, debouncedSpecialization]);
 
   // 🔔 [NOTIFICATION DIAGNOSTICS]
   useEffect(() => {
@@ -171,22 +240,9 @@ export default function SubmissionsPage() {
     }
   }, []);
 
-  const handleTriggerTest = async () => {
-    try {
-      const toastId = toast.loading("Triggering free system alerts...");
-      const res = await notificationsApi.test();
-      if (res.success) {
-        toast.dismiss(toastId);
-        toast.success("Push, Email & Weekly Report triggered!");
-      }
-    } catch (err: any) {
-      toast.error(`Diagnostics failed: ${err.message}`);
-    }
-  };
-
   useEffect(() => {
     const fetchStudents = async () => {
-      const isFilterComplete = selectedDepartment && selectedYear && selectedSemester && selectedClass;
+      const isFilterComplete = selectedDepartment && selectedYear && selectedSemester && selectedClass && debouncedSpecialization;
       if (!isFilterComplete) {
         setStudents([]);
         return;
@@ -198,6 +254,7 @@ export default function SubmissionsPage() {
           year: parseInt(selectedYear),
           semester: parseInt(selectedSemester),
           class_id: selectedClass,
+          specialization: debouncedSpecialization || undefined,
           limit: 100 // Boosted limit to show full roster of 37+ students
         });
         if (res.success) setStudents(res.data || []);
@@ -206,7 +263,7 @@ export default function SubmissionsPage() {
       }
     };
     fetchStudents();
-  }, [selectedDepartment, selectedYear, selectedSemester, selectedClass]);
+  }, [selectedDepartment, selectedYear, selectedSemester, selectedClass, debouncedSpecialization]);
 
   useEffect(() => {
     if (activityId) {
@@ -239,6 +296,10 @@ export default function SubmissionsPage() {
       if (a.year && a.year !== parseInt(selectedYear)) return false;
       if (a.semester && a.semester !== parseInt(selectedSemester)) return false;
       if (a.class_id && a.class_id !== selectedClass) return false;
+      if (a.specialization && 
+          debouncedSpecialization !== "General" && 
+          a.specialization !== "General" && 
+          a.specialization !== debouncedSpecialization) return false;
 
       if (mode === 'assignment' && courseId && a.course_id !== courseId) return false;
       
@@ -246,7 +307,7 @@ export default function SubmissionsPage() {
       const isPast = new Date(a.due_date) < new Date();
       return statusFilter === 'active' ? !isPast : isPast;
     });
-  }, [activities, mode, selectedYear, selectedSemester, selectedClass, courseId, statusFilter]);
+  }, [activities, mode, selectedYear, selectedSemester, selectedClass, debouncedSpecialization, courseId, statusFilter]);
 
   const currentActivity = useMemo(() => {
     return filteredActivities.find(a => a.id === activityId) || filteredActivities[0];
@@ -259,6 +320,24 @@ export default function SubmissionsPage() {
       setActivityId("");
     }
   }, [mode, statusFilter, filteredActivities.length]);
+
+  const handleRetryAI = async (evaluationId: string, studentId: string) => {
+    setIsEvaluating(studentId);
+    try {
+      const res = await evaluationsApi.retry!(evaluationId);
+      if (res.success && res.data) {
+        setActivityEvaluations(prev => ({
+          ...prev,
+          [studentId]: res.data!
+        }));
+        toast.success(res.message || "AI re-evaluation completed.");
+      }
+    } catch (err: any) {
+      toast.error(err.message || "AI retry failed.");
+    } finally {
+      setIsEvaluating(null);
+    }
+  };
 
   const handleFileUpload = async (studentId: string, file: File) => {
     if (!activityId || !currentActivity) {
@@ -280,28 +359,41 @@ export default function SubmissionsPage() {
 
     try {
       const res = await evaluationsApi.evaluate(formData);
-      if (res.success && res.data) {
-        const isPending = res.data.grade === 'AI_PENDING';
+      if (res.success) {
+        const isPending = res.data?.grade === 'AI_PENDING';
         if (isPending) {
           toast.warning("Submission Archived", { description: "File saved, but AI is currently at capacity. Please grade manually." });
         } else {
-          toast.success(mode === 'assignment' ? "AI Grading Complete" : "Submission Recorded");
+          const successMsg = res.message || (mode === 'assignment' ? "AI Grading Complete" : "Submission Recorded");
+          toast.success(successMsg);
         }
-        setRecentEvaluation(res.data);
-        setActivityEvaluations(prev => ({ ...prev, [studentId]: res.data! }));
+        if (res.data) {
+          setRecentEvaluation(res.data);
+          setActivityEvaluations(prev => ({ ...prev, [studentId]: res.data! }));
+        }
       } else {
-        throw res; // Throw the whole response to capture details
+        throw res;
       }
     } catch (err: any) {
-      console.error("Submission Failure Diagnostic:", err);
-      const isRateLimit = err.status === 429;
-      const errorMsg = err.error || "Submission pipeline failed";
-      const details = err.details || err.message || "Unknown error";
-      const hint = err.hint ? `\nHint: ${err.hint}` : "";
-      
+      // 🔍 Comprehensive Diagnostic Logging
+      const isApiError = err?.name === 'ApiError';
+      const status = err.status || 500;
+      const errorMsg = err.error || err.message || "Submission pipeline failed";
+      const details = err.details || (isApiError ? err.message : null) || "No detailed logs available";
+      const hint = err.hint || "";
+      const code = err.code || "";
+
+      console.error("Submission Failure Diagnostic:", {
+        status,
+        error: errorMsg,
+        details,
+        hint,
+        code
+      });
+
       toast.error(errorMsg, { 
-        description: `${details}${hint}`,
-        duration: 8000 // Show longer for diagnostics
+        description: `${details}${hint ? `\nHint: ${hint}` : ""}${code ? ` (Code: ${code})` : ""}`,
+        duration: 12000 
       });
     } finally {
       setIsEvaluating(null);
@@ -330,21 +422,33 @@ export default function SubmissionsPage() {
     if (!activityId || !currentActivity) return;
     setIsBulkUploading(true);
     const filesArray = Array.from(files);
-    let matched = 0;
-    for (const file of filesArray) {
+    let matchedCount = 0;
+
+    // Filter files that match a student
+    const tasks = filesArray.map(file => {
       const roll = file.name.split('.')[0];
       const student = students.find(s => s.roll_number === roll);
-      if (student) {
-        matched++;
-        // Use a sequential delay to respect Gemini RPM (15 RPM / 60s = 1 request every 4s)
-        await handleFileUpload(student.id, file);
-        if (matched < filesArray.length) {
-          await new Promise(resolve => setTimeout(resolve, 5000)); // Respectful delay
-        }
-      }
+      return student ? { studentId: student.id, file } : null;
+    }).filter(t => t !== null) as { studentId: string, file: File }[];
+
+    // Process in batches of 5 — Much faster now because backend returns immediately
+    const batchSize = 5;
+    const batchCount = Math.ceil(tasks.length / batchSize);
+    
+    for (let i = 0; i < tasks.length; i += batchSize) {
+      const batch = tasks.slice(i, i + batchSize);
+      
+      toast.info(`Uploading Batch ${Math.floor(i / batchSize) + 1} of ${batchCount}...`, {
+        description: `Archiving submissions for ${batch.length} students.`,
+      });
+
+      // We wait for the ARCHIVE (Step 1) to finish, but NOT the AI.
+      await Promise.all(batch.map(t => handleFileUpload(t.studentId, t.file)));
+      matchedCount += batch.length;
     }
+
     setIsBulkUploading(false);
-    toast.success(`Bulk processing complete: ${matched} matched.`);
+    toast.success(`Bulk processing complete: ${matchedCount} matched.`);
   };
 
   const handleUpdateDeadline = async () => {
@@ -447,12 +551,27 @@ export default function SubmissionsPage() {
                   </select>
                 </div>
 
+                  <div className="space-y-2">
+                    <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Specialization</Label>
+                    <select 
+                      className="ui-select" 
+                      value={selectedSpecialization} 
+                      onChange={(e) => setSelectedSpecialization(e.target.value)}
+                    >
+                      <option value="">Select Specialization</option>
+                      {getSpecializations(departments.find(d => d.id === selectedDepartment)?.name || '').map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </div>
+
                 <hr className="border-border/30" />
 
                 {mode === 'assignment' && (
                   <div className="space-y-2">
                     <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Academic Course</Label>
                     <select className="ui-select" value={courseId} onChange={(e) => setCourseId(e.target.value)}>
+                      <option value="">Select Academic Course</option>
                       {courses.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
                     </select>
                   </div>
@@ -461,6 +580,7 @@ export default function SubmissionsPage() {
                 <div className="space-y-2">
                   <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest">Topic</Label>
                   <select className="ui-select" value={activityId} onChange={(e) => setActivityId(e.target.value)}>
+                    <option value="">Select Topic</option>
                     {filteredActivities.length > 0 ? (
                       filteredActivities.map(a => <option key={a.id} value={a.id}>{a.title}</option>)
                     ) : <option value="">No {statusFilter} {mode}s</option>}
@@ -518,28 +638,6 @@ export default function SubmissionsPage() {
                            <p className="text-xs font-black text-blue-600">{currentActivity.max_marks || 100}</p>
                         </div>
                       )}
-                    </div>
-
-                  </div>
-                )}
-
-                {/* 🛡️ NEW: System Health Diagnostics */}
-                {courseId && (
-                  <div className="pt-4 border-t border-border/30 space-y-3">
-                    <Label className="text-[10px] font-black uppercase text-muted-foreground tracking-widest px-1">System Health & Notifications</Label>
-                    <div className="p-3 bg-indigo-50/50 rounded-xl border border-indigo-100 flex flex-col gap-2">
-                      <div className="flex items-center gap-2">
-                        <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        <span className="text-[10px] font-bold text-indigo-900">Communication Suite Ready</span>
-                      </div>
-                      <button 
-                         onClick={handleTriggerTest}
-                         className="flex items-center justify-center gap-2 w-full py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-[10px] font-black uppercase tracking-widest transition-all shadow-sm shadow-indigo-600/20"
-                      >
-                         <Sparkles className="w-3 h-3" />
-                         Trigger All Alerts (Free)
-                      </button>
-                      <p className="text-[8px] font-bold text-indigo-400 text-center uppercase tracking-tighter">Tests Push + Email + Weekly Report</p>
                     </div>
                   </div>
                 )}
@@ -633,13 +731,25 @@ export default function SubmissionsPage() {
                                           </div>
                                           
                                           {ev.source === 'system' && (
-                                            <div className="ml-auto flex items-center">
+                                            <div className="ml-auto flex items-center gap-1.5">
+                                              <button 
+                                                onClick={() => handleRetryAI(ev.id, student.id)}
+                                                disabled={isEvaluating === student.id}
+                                                className="p-1.5 hover:bg-emerald-50 rounded-full text-emerald-600 transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
+                                                title="Retry AI Evaluation"
+                                              >
+                                                {isEvaluating === student.id ? (
+                                                  <Spinner size="sm" className="text-emerald-600" />
+                                                ) : (
+                                                  <RefreshCw className="w-3.5 h-3.5" />
+                                                )}
+                                              </button>
                                               <label 
                                                 htmlFor={`re-upload-${student.id}`}
                                                 className="p-1.5 hover:bg-indigo-50 rounded-full text-indigo-600 transition-colors cursor-pointer"
-                                                title="Re-Upload for High-Accuracy AI"
+                                                title="Manual Re-Upload"
                                               >
-                                                <div className="w-3.5 h-3.5">🔄</div>
+                                                <Upload className="w-3.5 h-3.5" />
                                               </label>
                                               <input 
                                                 id={`re-upload-${student.id}`}

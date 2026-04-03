@@ -36,6 +36,7 @@ import {
 } from "@/lib/api";
 import { debounce } from "@/lib/utils";
 import { getSemesterOptions, getYearForSemester } from "@/lib/yearSemesterUtils";
+import { getSpecializations } from "@/lib/specializations";
 
 const courseTypeColors: Record<string, "default" | "primary" | "success" | "warning" | "destructive"> = {
   lecture: "primary",
@@ -186,6 +187,13 @@ const CourseForm = ({
         }
         required
       />
+      <Select
+        label="Specialization"
+        placeholder="Select specialization"
+        options={getSpecializations(departments.find(d => d.id === formData.department_id)?.name || '').map(s => ({ value: s, label: s }))}
+        value={formData.specialization}
+        onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: any) => ({ ...prev, specialization: e.target.value }))}
+      />
     </div>
     <div className="grid grid-cols-1 gap-4">
       <Select
@@ -267,6 +275,7 @@ export default function CoursesPage() {
     department_id: "",
     semester: "",
     year: "",
+    specialization: "",
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -386,6 +395,7 @@ export default function CoursesPage() {
         department_id: formData.department_id,
         semester,
         year,
+        specialization: formData.specialization || undefined,
       });
 
       if (response.success) {
@@ -432,6 +442,7 @@ export default function CoursesPage() {
         department_id: formData.department_id,
         semester,
         year,
+        specialization: formData.specialization || undefined,
       });
 
       if (response.success) {
@@ -515,6 +526,7 @@ export default function CoursesPage() {
       department_id: "",
       semester: "",
       year: "",
+      specialization: "",
     });
     setSelectedCourse(null);
     setCodeValidation(null);
@@ -530,6 +542,7 @@ export default function CoursesPage() {
       department_id: course.department_id,
       semester: course.semester.toString(),
       year: course.year?.toString() || "",
+      specialization: course.specialization || "",
     });
     setIsEditModalOpen(true);
   };
@@ -901,16 +914,12 @@ const courseTypes = [
                   setGenerateParams((prev) => ({ ...prev, year: newYear, semester: "" }));
                 }}
               />
-              <Input
-                label="Specialization (Optional)"
-                placeholder="e.g., FSD, AIML"
+              <Select
+                label="Specialization"
+                placeholder="Select specialization"
+                options={getSpecializations(departments.find(d => d.id === generateParams.department)?.name || '').map(s => ({ value: s, label: s }))}
                 value={generateParams.specialization}
-                onChange={(e) =>
-                  setGenerateParams((prev) => ({
-                    ...prev,
-                    specialization: e.target.value,
-                  }))
-                }
+                onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setGenerateParams({ ...generateParams, specialization: e.target.value })}
               />
             </div>
 
