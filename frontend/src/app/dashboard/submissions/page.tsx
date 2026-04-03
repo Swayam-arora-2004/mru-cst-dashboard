@@ -713,74 +713,74 @@ export default function SubmissionsPage() {
                                     </div>
                                   </td>
                                   <td className="px-6 py-5">
-                                    {(activityEvaluations[student.id]?.length || 0) > 0 ? (() => {
-                                      const evList = activityEvaluations[student.id];
-                                      // Latest is at the top/index 0
-                                      const ev = evList[0];
-                                      const hasMultiple = evList.length > 1;
+                                    {(activityEvaluations[student.id]?.length || 0) > 0 ? (
+                                      (() => {
+                                        const evList = activityEvaluations[student.id];
+                                        const ev = evList[0];
+                                        const hasMultiple = evList.length > 1;
 
-                                      return mode === 'document' ? (
-                                        <div className="flex items-center gap-2">
-                                          <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest border-2 border-emerald-200">
-                                            {hasMultiple ? `${evList.length} Files` : 'Submitted'}
-                                          </Badge>
-                                          <span className="text-xs font-black text-emerald-600">✓ Verified</span>
-                                        </div>
-                                      ) : (
-                                        <div className="flex items-center gap-2">
-                                        <div className="flex items-center gap-2">
-                                          {ev.grade === 'AI_PENDING' ? (
-                                            <Badge className="bg-amber-500 text-white font-black text-[9px] uppercase tracking-widest">AI Pending</Badge>
-                                          ) : ev.source === 'system' ? (
-                                            <Badge className="bg-indigo-600 text-white font-black text-[9px] uppercase tracking-widest border-2 border-indigo-200">Estimated</Badge>
-                                          ) : (
-                                            <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest">
-                                              {hasMultiple ? `Latest: ${ev.grade}` : 'AI Graded'}
+                                        return mode === 'document' ? (
+                                          <div className="flex items-center gap-2">
+                                            <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest border-2 border-emerald-200">
+                                              {hasMultiple ? `${evList.length} Files` : 'Submitted'}
                                             </Badge>
-                                          )}
-                                          <div className="flex flex-col">
-                                            <span className="text-xs font-black text-foreground">
-                                              {ev.grade === 'AI_PENDING' ? 'Manual Grade Req.' : `Score: ${ev.marks_attained}`}
-                                            </span>
-                                            {hasMultiple && (
-                                              <span className="text-[8px] font-bold text-indigo-600 uppercase">
-                                                +{evList.length - 1} More Submissions
+                                            <span className="text-xs font-black text-emerald-600">✓ Verified</span>
+                                          </div>
+                                        ) : (
+                                          <div className="flex items-center gap-2">
+                                            {ev.grade === 'AI_PENDING' ? (
+                                              <Badge className="bg-amber-500 text-white font-black text-[9px] uppercase tracking-widest">AI Pending</Badge>
+                                            ) : ev.source === 'system' ? (
+                                              <Badge className="bg-indigo-600 text-white font-black text-[9px] uppercase tracking-widest border-2 border-indigo-200">Estimated</Badge>
+                                            ) : (
+                                              <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest">
+                                                {hasMultiple ? `Latest: ${ev.grade}` : 'AI Graded'}
+                                              </Badge>
+                                            )}
+                                            <div className="flex flex-col">
+                                              <span className="text-xs font-black text-foreground">
+                                                {ev.grade === 'AI_PENDING' ? 'Manual Grade Req.' : `Score: ${ev.marks_attained}`}
                                               </span>
+                                              {hasMultiple && (
+                                                <span className="text-[8px] font-bold text-indigo-600 uppercase">
+                                                  +{evList.length - 1} More Submissions
+                                                </span>
+                                              )}
+                                            </div>
+                                            
+                                            {ev.source === 'system' && (
+                                              <div className="ml-auto flex items-center gap-1.5">
+                                                <button 
+                                                  onClick={() => handleRetryAI(ev.id, student.id)}
+                                                  disabled={isEvaluating === student.id}
+                                                  className="p-1.5 hover:bg-emerald-50 rounded-full text-emerald-600 transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
+                                                  title="Retry AI Evaluation"
+                                                >
+                                                  {isEvaluating === student.id ? (
+                                                    <Spinner size="sm" className="text-emerald-600" />
+                                                  ) : (
+                                                    <RefreshCw className="w-3.5 h-3.5" />
+                                                  )}
+                                                </button>
+                                                <label 
+                                                  htmlFor={`re-upload-${student.id}`}
+                                                  className="p-1.5 hover:bg-indigo-50 rounded-full text-indigo-600 transition-colors cursor-pointer"
+                                                  title="Manual Re-Upload"
+                                                >
+                                                  <Upload className="w-3.5 h-3.5" />
+                                                </label>
+                                                <input 
+                                                  id={`re-upload-${student.id}`}
+                                                  type="file" 
+                                                  className="hidden" 
+                                                  onChange={(e) => e.target.files?.[0] && handleFileUpload(student.id, e.target.files[0])}
+                                                />
+                                              </div>
                                             )}
                                           </div>
-                                          
-                                          {ev.source === 'system' && (
-                                            <div className="ml-auto flex items-center gap-1.5">
-                                              <button 
-                                                onClick={() => handleRetryAI(ev.id, student.id)}
-                                                disabled={isEvaluating === student.id}
-                                                className="p-1.5 hover:bg-emerald-50 rounded-full text-emerald-600 transition-all hover:scale-110 active:scale-95 disabled:opacity-50"
-                                                title="Retry AI Evaluation"
-                                              >
-                                                {isEvaluating === student.id ? (
-                                                  <Spinner size="sm" className="text-emerald-600" />
-                                                ) : (
-                                                  <RefreshCw className="w-3.5 h-3.5" />
-                                                )}
-                                              </button>
-                                              <label 
-                                                htmlFor={`re-upload-${student.id}`}
-                                                className="p-1.5 hover:bg-indigo-50 rounded-full text-indigo-600 transition-colors cursor-pointer"
-                                                title="Manual Re-Upload"
-                                              >
-                                                <Upload className="w-3.5 h-3.5" />
-                                              </label>
-                                              <input 
-                                                id={`re-upload-${student.id}`}
-                                                type="file" 
-                                                className="hidden" 
-                                                onChange={(e) => e.target.files?.[0] && handleFileUpload(student.id, e.target.files[0])}
-                                              />
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })() : (
+                                        );
+                                      })()
+                                    ) : (
                                       statusFilter === 'active' ? (
                                         <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/30 border-dashed">No Submission</Badge>
                                       ) : (
