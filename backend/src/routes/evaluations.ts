@@ -399,14 +399,25 @@ router.get('/activity/:activityId', authenticate, async (req: AuthRequest, res: 
         
         res.status(200).json({ success: true, data: mappedData });
     } else {
+      // 🚀 ASGN MODE: Pull directly from 'assignment_submissions' to show all historical AI grades.
+      // This ensures that scores stored in the submission log (even if failed to sync to evaluations) are visible.
       const { data, error } = await supabase
-        .from('evaluations')
+        .from('assignment_submissions')
         .select('*')
-        .eq('activity_id', req.params.activityId);
-        // Removed strict teacher_id filter to allow shared activity grading visibility
+        .eq('assignment_id', req.params.activityId);
 
       if (error) throw error;
-      res.status(200).json({ success: true, data });
+
+      // Map assignment_submissions schema to evaluation schema for UI compatibility
+      const mappedData = (data || []).map(row => ({
+        ...row,
+        activity_id: row.assignment_id,
+        type: 'assignment',
+        file_name: row.file_url, // Map file_url to expected frontend key
+        source: row.source || 'ai'
+      }));
+
+      res.status(200).json({ success: true, data: mappedData });
     }
   } catch (err) {
     logger.error('Get activity evaluations error:', err);
