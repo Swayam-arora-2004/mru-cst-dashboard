@@ -127,7 +127,7 @@ const processNextSubmission = async () => {
        evaluation = await runNativeFilePipeline(gradingParams);
     }
 
-    // 6. Save directly to Evaluations Master
+    // 6. Save directly to Evaluations Master (Always INSERT to preserve portfolio history)
     const evalData = {
       teacher_id: courseData?.teacher_id || 'system',
       student_id,
@@ -140,14 +140,15 @@ const processNextSubmission = async () => {
       source: 'ai'
     };
 
-    // Upsert safely using conflict resolution manually 
-    const { data: existingEval } = await supabase.from('evaluations')
-      .select('id').eq('student_id', student_id).eq('activity_id', assignment_id).maybeSingle();
-
-    if (existingEval) {
-       await supabase.from('evaluations').update(evalData).eq('id', existingEval.id);
-    } else {
-       await supabase.from('evaluations').insert(evalData);
+    // 🚀 NEW: We perform a blind insert to ensure ALL graded attempts are preserved in the master transcript.
+    // This enables the "Portfolio" view where a student can have multiple graded files for a single lab/assignment.
+    const { error: evalInsertErr } = await supabase.from('evaluations').insert(evalData);
+    if (evalInsertErr) {
+        // If there's a unique constraint on (student_id, activity_id), we fall back to upsert based on those keys.
+        // This ensures the worker never "fails" but tries its best to keep history if the DB schema allows it.
+        logger.warn(`[DAEMON] Evaluation Insert Conflict: ${evalInsertErr.message}. Attempting update instead.`);
+        await supabase.from('evaluations')
+          .upsert(evalData, { onConflict: 'student_id,activity_id' });
     }
 
     // 7. Update Submission Table

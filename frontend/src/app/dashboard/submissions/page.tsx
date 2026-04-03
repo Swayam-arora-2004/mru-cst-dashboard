@@ -131,15 +131,16 @@ export default function SubmissionsPage() {
     if (!activityId) return;
     try {
       const res = await evaluationsApi.getForActivity(activityId);
-      if (res.success) {
-        const evals: Record<string, Evaluation> = {};
-        res.data?.forEach(e => {
-          evals[e.student_id] = e;
+      if (res.success && res.data) {
+        const evalGroups: Record<string, Evaluation[]> = {};
+        res.data.forEach(e => {
+          if (!evalGroups[e.student_id]) evalGroups[e.student_id] = [];
+          evalGroups[e.student_id].push(e);
         });
-        setActivityEvaluations(evals);
+        setActivityEvaluations(evalGroups);
       }
     } catch (err) {
-      console.error("Failed to load evaluations.");
+      console.error("Failed to load evaluations:", err);
     }
   };
 
@@ -273,15 +274,19 @@ export default function SubmissionsPage() {
     }
   }, [activityId]);
 
+  const [activityEvaluations, setActivityEvaluations] = useState<Record<string, Evaluation[]>>({});
+...
   const fetchActivityEvaluations = async (id: string) => {
     try {
       const res = await evaluationsApi.getForActivity(id);
       if (res.success && res.data) {
-        const evalMap: Record<string, Evaluation> = {};
+        // Group evaluations by Student ID (History/Portfolio Support)
+        const evalGroups: Record<string, Evaluation[]> = {};
         res.data.forEach(e => {
-          evalMap[e.student_id] = e;
+          if (!evalGroups[e.student_id]) evalGroups[e.student_id] = [];
+          evalGroups[e.student_id].push(e);
         });
-        setActivityEvaluations(evalMap);
+        setActivityEvaluations(evalGroups);
       }
     } catch (err) {
       console.error("Failed to fetch activity evaluations:", err);
@@ -369,7 +374,10 @@ export default function SubmissionsPage() {
         }
         if (res.data) {
           setRecentEvaluation(res.data);
-          setActivityEvaluations(prev => ({ ...prev, [studentId]: res.data! }));
+          setActivityEvaluations(prev => {
+            const studentEvals = prev[studentId] || [];
+            return { ...prev, [studentId]: [res.data!, ...studentEvals] };
+          });
         }
       } else {
         throw res;
@@ -706,28 +714,40 @@ export default function SubmissionsPage() {
                                     </div>
                                   </td>
                                   <td className="px-6 py-5">
-                                    {ev ? (
-                                      mode === 'document' ? (
+                                    {(activityEvaluations[student.id]?.length || 0) > 0 ? (() => {
+                                      const evList = activityEvaluations[student.id];
+                                      // Latest is at the top/index 0
+                                      const ev = evList[0];
+                                      const hasMultiple = evList.length > 1;
+
+                                      return mode === 'document' ? (
                                         <div className="flex items-center gap-2">
-                                          <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest border-2 border-emerald-200">Submitted</Badge>
-                                          <span className="text-xs font-black text-emerald-600">✓ Verified Record</span>
+                                          <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest border-2 border-emerald-200">
+                                            {hasMultiple ? `${evList.length} Files` : 'Submitted'}
+                                          </Badge>
+                                          <span className="text-xs font-black text-emerald-600">✓ Verified</span>
                                         </div>
                                       ) : (
+                                        <div className="flex items-center gap-2">
                                         <div className="flex items-center gap-2">
                                           {ev.grade === 'AI_PENDING' ? (
                                             <Badge className="bg-amber-500 text-white font-black text-[9px] uppercase tracking-widest">AI Pending</Badge>
                                           ) : ev.source === 'system' ? (
                                             <Badge className="bg-indigo-600 text-white font-black text-[9px] uppercase tracking-widest border-2 border-indigo-200">Estimated</Badge>
                                           ) : (
-                                            <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest">AI Graded</Badge>
+                                            <Badge className="bg-emerald-500 text-white font-black text-[9px] uppercase tracking-widest">
+                                              {hasMultiple ? `Latest: ${ev.grade}` : 'AI Graded'}
+                                            </Badge>
                                           )}
                                           <div className="flex flex-col">
                                             <span className="text-xs font-black text-foreground">
                                               {ev.grade === 'AI_PENDING' ? 'Manual Grade Req.' : `Score: ${ev.marks_attained}`}
                                             </span>
-                                            <span className="text-[8px] font-bold text-emerald-600 uppercase">
-                                              {ev.source === 'system' ? 'Quota Fallback' : 'Verified'}
-                                            </span>
+                                            {hasMultiple && (
+                                              <span className="text-[8px] font-bold text-indigo-600 uppercase">
+                                                +{evList.length - 1} More Submissions
+                                              </span>
+                                            )}
                                           </div>
                                           
                                           {ev.source === 'system' && (
@@ -760,8 +780,8 @@ export default function SubmissionsPage() {
                                             </div>
                                           )}
                                         </div>
-                                      )
-                                    ) : (
+                                      );
+                                    })() : (
                                       statusFilter === 'active' ? (
                                         <Badge variant="outline" className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/30 border-dashed">No Submission</Badge>
                                       ) : (
@@ -773,14 +793,17 @@ export default function SubmissionsPage() {
                                     )}
                                   </td>
                                   <td className="px-6 py-5 text-right">
-                                    {ev ? (
-                                      <div className="flex items-center justify-end gap-2">
-                                         <a href={ev.file_name} target="_blank" className="p-2 bg-secondary/50 rounded-lg hover:bg-blue-600 hover:text-white transition-all"><Download className="w-4 h-4" /></a>
-                                         {statusFilter === 'active' && (
-                                           <button onClick={() => deleteSubmission(ev.id, student.id)} className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-all"><X className="w-4 h-4" /></button>
-                                         )}
-                                      </div>
-                                    ) : (
+                                    {activityEvaluations[student.id]?.length > 0 ? (() => {
+                                      const ev = activityEvaluations[student.id][0];
+                                      return (
+                                        <div className="flex items-center justify-end gap-2">
+                                           <a href={ev.file_name} target="_blank" className="p-2 bg-secondary/50 rounded-lg hover:bg-blue-600 hover:text-white transition-all" title="Download Latest Submission"><Download className="w-4 h-4" /></a>
+                                           {statusFilter === 'active' && (
+                                             <button onClick={() => deleteSubmission(ev.id, student.id)} className="p-2 bg-rose-50 text-rose-600 rounded-lg hover:bg-rose-600 hover:text-white transition-all"><X className="w-4 h-4" /></button>
+                                           )}
+                                        </div>
+                                      );
+                                    })() : (
                                       statusFilter === 'active' ? (
                                         <label className="text-blue-600 font-black text-[10px] uppercase cursor-pointer hover:underline">
                                            Upload <input type="file" className="hidden" onChange={(e) => e.target.files && handleFileUpload(student.id, e.target.files[0])} />
