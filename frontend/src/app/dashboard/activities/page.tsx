@@ -188,7 +188,7 @@ export default function ActivitiesPage() {
   }, [selectedDepartment, selectedSemester, selectedYear, specialization]);
 
   // 3. Fetch Students when all filters are complete (Only for Attendance)
-  const isFilterComplete = !!(selectedDepartment && selectedYear && selectedSemester && selectedClass && specialization);
+  const isFilterComplete = !!(selectedDepartment && selectedYear && selectedSemester && selectedClass);
   const isSubmissionReady = isFilterComplete && (type === 'document' || courseId);
 
   useEffect(() => {

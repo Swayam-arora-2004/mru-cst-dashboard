@@ -190,8 +190,11 @@ const CourseForm = ({
       <Select
         label="Specialization"
         placeholder="Select specialization"
-        options={getSpecializations(departments.find(d => d.id === formData.department_id)?.name || '').map(s => ({ value: s, label: s }))}
-        value={formData.specialization}
+        options={[
+          { value: "", label: "None" },
+          ...getSpecializations(departments.find(d => d.id === formData.department_id)?.name || '').map(s => ({ value: s, label: s }))
+        ]}
+        value={formData.specialization || ""}
         onChange={(e: React.ChangeEvent<HTMLSelectElement>) => setFormData((prev: any) => ({ ...prev, specialization: e.target.value }))}
       />
     </div>
@@ -395,7 +398,7 @@ export default function CoursesPage() {
         department_id: formData.department_id,
         semester,
         year,
-        specialization: formData.specialization || undefined,
+        specialization: formData.specialization || (null as any),
       });
 
       if (response.success) {
@@ -442,7 +445,7 @@ export default function CoursesPage() {
         department_id: formData.department_id,
         semester,
         year,
-        specialization: formData.specialization || undefined,
+        specialization: formData.specialization || (null as any),
       });
 
       if (response.success) {

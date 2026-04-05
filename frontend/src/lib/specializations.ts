@@ -1,20 +1,18 @@
 export const DEPARTMENT_SPECIALIZATIONS: Record<string, string[]> = {
-  'default': ['General'],
+  'default': [],
   'Computer Science and Engineering (Specialization)': [
     'AI & Machine Learning',
     'Data Science',
     'Cybersecurity',
     'Cloud Computing',
-    'Blockchain Technology',
-    'General'
+    'Blockchain Technology'
   ],
   'Electronics and Communication Engineering (Specialization)': [
     'VLSI Design',
     'Embedded Systems',
     'IoT',
     'Robotics',
-    'Artificial Intelligence',
-    'General'
+    'Artificial Intelligence'
   ],
   'Electronic and Electrical Engineering (Specialization)': [
     'Power Electronics',
@@ -22,8 +20,7 @@ export const DEPARTMENT_SPECIALIZATIONS: Record<string, string[]> = {
     'Renewable Energy Systems',
     'VLSI Design',
     'Robotics',
-    'Communication Engineering',
-    'General'
+    'Communication Engineering'
   ]
 };
 

@@ -146,7 +146,7 @@ export default function SubmissionsPage() {
   // 2. Filter-driven data updates & Background Polling
   useEffect(() => {
     const fetchCourses = async () => {
-      if (!debouncedSpecialization) {
+      if (!selectedDepartment || !selectedYear || !selectedSemester) {
         setCourses([]);
         setCourseId("");
         return;
@@ -190,7 +190,7 @@ export default function SubmissionsPage() {
 
   useEffect(() => {
     const fetchFilteredActivities = async () => {
-      if (!debouncedSpecialization) {
+      if (!selectedDepartment || !selectedYear || !selectedSemester) {
         setActivities([]);
         setActivityId("");
         return;
@@ -242,7 +242,7 @@ export default function SubmissionsPage() {
 
   useEffect(() => {
     const fetchStudents = async () => {
-      const isFilterComplete = selectedDepartment && selectedYear && selectedSemester && selectedClass && debouncedSpecialization;
+      const isFilterComplete = selectedDepartment && selectedYear && selectedSemester && selectedClass;
       if (!isFilterComplete) {
         setStudents([]);
         return;

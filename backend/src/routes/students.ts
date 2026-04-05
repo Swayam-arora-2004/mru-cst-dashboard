@@ -428,7 +428,7 @@ router.post('/bulk', authenticate, async (req: AuthRequest, res: Response) => {
         specialization:
           typeof s.specialization === 'string' && s.specialization.trim().length > 0
             ? s.specialization.trim()
-            : 'N/A'
+            : null
       });
     });
 

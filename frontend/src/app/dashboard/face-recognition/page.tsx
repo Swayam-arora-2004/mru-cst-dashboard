@@ -15,6 +15,7 @@ import {
   Sparkles,
   Brain,
   Zap,
+  Camera,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Header } from "@/components/layout/header";
@@ -53,6 +54,11 @@ export default function FaceRecognitionPage() {
   const [capturedImage, setCapturedImage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Webcam state
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [isWebcamActive, setIsWebcamActive] = useState(false);
 
   // Manual search state
   const [rollNumber, setRollNumber] = useState("");
@@ -116,6 +122,65 @@ export default function FaceRecognitionPage() {
     // Automatically run recognition
     recognizeFace(file);
   };
+
+  const startWebcam = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+      }
+      setIsWebcamActive(true);
+      setCapturedImage(null);
+    } catch (err) {
+      console.error("Error accessing webcam:", err);
+      toast.error("Could not access webcam. Please ensure you have granted permission.");
+    }
+  };
+
+  const stopWebcam = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsWebcamActive(false);
+  };
+
+  const captureWebcam = () => {
+    if (videoRef.current) {
+      const canvas = document.createElement("canvas");
+      canvas.width = videoRef.current.videoWidth;
+      canvas.height = videoRef.current.videoHeight;
+      const ctx = canvas.getContext("2d");
+      if (ctx) {
+        ctx.drawImage(videoRef.current, 0, 0);
+        const dataUrl = canvas.toDataURL("image/jpeg");
+        setCapturedImage(dataUrl);
+        stopWebcam();
+
+        // Convert data URL to File to run recognition
+        fetch(dataUrl)
+          .then((res) => res.blob())
+          .then((blob) => {
+            const file = new File([blob], "webcam-capture.jpg", { type: "image/jpeg" });
+            setSelectedFile(file);
+            recognizeFace(file);
+          });
+      }
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      stopWebcam();
+    };
+  }, [searchMode]);
+
+  useEffect(() => {
+    if (isWebcamActive && videoRef.current && streamRef.current) {
+      videoRef.current.srcObject = streamRef.current;
+    }
+  }, [isWebcamActive]);
 
   // Fast Client-side recognition using WebGL -> Server distance match
   const recognizeFace = async (file: File) => {
@@ -216,6 +281,7 @@ export default function FaceRecognitionPage() {
   );
 
   const resetSearch = () => {
+    stopWebcam();
     setCapturedImage(null);
     setSelectedFile(null);
     setMatchedStudent(null);
@@ -324,25 +390,56 @@ export default function FaceRecognitionPage() {
                   {/* Image Upload Area */}
                   <Card>
                     <CardContent className="p-6">
-                      {!capturedImage ? (
+                      {isWebcamActive ? (
+                        <div className="space-y-4">
+                          <div className="relative rounded-xl overflow-hidden bg-black flex items-center justify-center min-h-[300px]">
+                            <video
+                              ref={videoRef}
+                              autoPlay
+                              playsInline
+                              muted
+                              className="w-full max-h-72 object-contain"
+                            />
+                          </div>
+                          <div className="flex gap-4">
+                            <Button variant="outline" onClick={stopWebcam} className="flex-1">
+                              Cancel
+                            </Button>
+                            <Button onClick={captureWebcam} className="flex-1">
+                              <Camera className="h-4 w-4 mr-2" />
+                              Capture Face
+                            </Button>
+                          </div>
+                        </div>
+                      ) : !capturedImage ? (
                         <div className="space-y-4">
                           <div className="flex flex-col items-center justify-center py-12 border-2 border-dashed border-border rounded-xl">
                             <div className="p-4 rounded-full bg-blue-50 dark:bg-blue-900/20 mb-4">
                               <ScanFace className="h-8 w-8 text-blue-500" />
                             </div>
                             <h3 className="text-lg font-medium text-foreground mb-2">
-                              Upload a Face Photo
+                              Scan or Upload Face
                             </h3>
                             <p className="text-sm text-muted-foreground text-center max-w-sm mb-6">
-                              Our AI will identify the student instantly using server-side neural networks
+                              Identify the student instantly using our AI face recognition
                             </p>
-                            <Button
-                              onClick={() => fileInputRef.current?.click()}
-                              size="lg"
-                            >
-                              <Upload className="h-4 w-4" />
-                              Choose Image
-                            </Button>
+                            <div className="flex gap-4">
+                              <Button
+                                onClick={() => fileInputRef.current?.click()}
+                                size="lg"
+                              >
+                                <Upload className="h-4 w-4 mr-2" />
+                                Upload Image
+                              </Button>
+                              <Button
+                                onClick={startWebcam}
+                                size="lg"
+                                variant="outline"
+                              >
+                                <Camera className="h-4 w-4 mr-2" />
+                                Use Webcam
+                              </Button>
+                            </div>
                             <input
                               ref={fileInputRef}
                               type="file"
